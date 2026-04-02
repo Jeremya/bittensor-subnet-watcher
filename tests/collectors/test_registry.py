@@ -6,7 +6,7 @@ from collectors.registry import RegistryCollector
 
 MOCK_TAOSTAT_JSON = {
     "1": {"name": "Apex", "github": "https://github.com/macrocosm-os/apex",
-          "owner": "5HCF", "bittensor_id": "alpha"},
+          "owner": "5HCF", "bittensor_id": "alpha", "twitter": "@apexteam"},
     "64": {"name": "Chutes", "github": "https://github.com/rayonlabs/chutes",
            "owner": "5Xyz", "bittensor_id": "chutes"},
 }
@@ -40,16 +40,22 @@ async def test_refresh_builds_registry_from_dynamic_info(db):
     assert registry[1]["github_url"] == "https://github.com/macrocosm-os/apex"
 
 
-async def test_refresh_keeps_old_data_on_taostat_404(db):
-    # Pre-populate registry
-    from db.database import upsert_registry_entry
-    await upsert_registry_entry(db, 1, "Apex", "https://github.com/old/repo", "@old_handle")
+async def test_refresh_succeeds_when_taostat_fails(db):
     dynamic_list = [make_dynamic_info(1, "Apex")]
     with patch("collectors.registry.fetch_taostat_json",
                AsyncMock(side_effect=Exception("404"))):
         await RegistryCollector.refresh(db, dynamic_list)
     registry = await get_registry(db)
-    assert registry[1]["name"] == "Apex"  # still present, not wiped
+    assert registry[1]["name"] == "Apex"  # row still exists, refresh did not crash
+
+
+async def test_refresh_extracts_x_handle_from_taostat(db):
+    dynamic_list = [make_dynamic_info(1, "Apex")]
+    with patch("collectors.registry.fetch_taostat_json",
+               AsyncMock(return_value=MOCK_TAOSTAT_JSON)):
+        await RegistryCollector.refresh(db, dynamic_list)
+    registry = await get_registry(db)
+    assert registry[1]["x_handle"] == "apexteam"  # leading @ stripped
 
 
 async def test_refresh_handles_missing_subnet_identity(db):
