@@ -85,7 +85,7 @@ class GitHubCollector:
                 continue
             owner, repo = parsed
             data = await GitHubCollector.fetch_repo(owner, repo)
-            if data:
+            if data is not None:
                 results[netuid] = data
 
         ok = len(results)
