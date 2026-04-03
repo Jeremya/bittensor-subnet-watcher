@@ -11,6 +11,7 @@ from engine.alerts import (
     check_github_spike,
     check_social_silence,
     check_new_entry,
+    check_ownership_transfer,
     evaluate_alerts,
 )
 
@@ -96,6 +97,39 @@ def test_new_entry_fires_for_unknown_netuid():
 def test_new_entry_does_not_fire_for_known():
     snap = make_snap(1)
     assert check_new_entry(snap, known_netuids={1, 2, 3}) is None
+
+
+# ── check_ownership_transfer ──────────────────────────────────────────────────
+
+def test_ownership_transfer_fires_on_coldkey_change():
+    prev = make_snap(1, owner_coldkey="5ABC123def456789abc")
+    curr = make_snap(1, owner_coldkey="5XYZ987uvw654321xyz")
+    result = check_ownership_transfer(curr, prev)
+    assert result is not None
+    assert result.alert_type == "ownership_transfer"
+    assert "5ABC123d" in result.description
+    assert "5XYZ987u" in result.description
+
+
+def test_ownership_transfer_no_alert_when_same():
+    coldkey = "5ABC123def456789abc"
+    prev = make_snap(1, owner_coldkey=coldkey)
+    curr = make_snap(1, owner_coldkey=coldkey)
+    assert check_ownership_transfer(curr, prev) is None
+
+
+def test_ownership_transfer_no_alert_when_prev_none():
+    """Prevents false alerts on first snapshot after field was populated."""
+    curr = make_snap(1, owner_coldkey="5ABC123def456789abc")
+    prev = make_snap(1, owner_coldkey=None)
+    assert check_ownership_transfer(curr, prev) is None
+
+
+def test_ownership_transfer_no_alert_when_current_none():
+    """Prevents false alerts when chain temporarily omits owner_coldkey."""
+    prev = make_snap(1, owner_coldkey="5ABC123def456789abc")
+    curr = make_snap(1, owner_coldkey=None)
+    assert check_ownership_transfer(curr, prev) is None
 
 
 # ── evaluate_alerts integration ───────────────────────────────────────────────

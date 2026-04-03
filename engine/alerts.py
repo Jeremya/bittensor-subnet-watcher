@@ -127,6 +127,25 @@ def check_new_entry(snap: SubnetSnapshot, known_netuids: set[int]) -> Optional[A
     return None
 
 
+def check_ownership_transfer(current: SubnetSnapshot,
+                              prev: SubnetSnapshot) -> Optional[AlertRecord]:
+    if current.owner_coldkey is None or prev.owner_coldkey is None:
+        return None
+    if current.owner_coldkey == prev.owner_coldkey:
+        return None
+    return AlertRecord(
+        fired_at=datetime.now(timezone.utc),
+        netuid=current.netuid,
+        subnet_name=f"SN{current.netuid}",
+        alert_type="ownership_transfer",
+        description=(
+            f"Owner changed: {prev.owner_coldkey[:8]}… → {current.owner_coldkey[:8]}…"
+        ),
+        current_value=None,
+        threshold=None,
+    )
+
+
 async def evaluate_alerts(
     db: aiosqlite.Connection,
     snapshots: list[SubnetSnapshot],
