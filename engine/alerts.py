@@ -139,7 +139,7 @@ def check_ownership_transfer(current: SubnetSnapshot,
         subnet_name=f"SN{current.netuid}",
         alert_type="ownership_transfer",
         description=(
-            f"Owner changed: {prev.owner_coldkey[:8]}… → {current.owner_coldkey[:8]}…"
+            f"Owner changed: {prev.owner_coldkey[:8]}... → {current.owner_coldkey[:8]}..."
         ),
         current_value=None,
         threshold=None,
