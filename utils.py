@@ -1,8 +1,23 @@
 import asyncio
 import logging
+import ssl
+import certifi
+import aiohttp
 from typing import Callable, TypeVar, Awaitable
 
 logger = logging.getLogger(__name__)
+
+
+def ssl_context() -> ssl.SSLContext:
+    """Return an SSL context using certifi's CA bundle."""
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    return ctx
+
+
+def aiohttp_session(**kwargs) -> aiohttp.ClientSession:
+    """Return an aiohttp ClientSession with certifi SSL context."""
+    connector = aiohttp.TCPConnector(ssl=ssl_context())
+    return aiohttp.ClientSession(connector=connector, **kwargs)
 T = TypeVar("T")
 
 

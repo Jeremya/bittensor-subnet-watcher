@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 import bittensor as bt
 from models import SubnetSnapshot
+from utils import aiohttp_session
 import config
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ async def fetch_tao_usd_price() -> Optional[float]:
     """Fetch TAO/USD price from CoinGecko."""
     url = "https://api.coingecko.com/api/v3/simple/price?ids=bittensor&vs_currencies=usd"
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp_session() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 resp.raise_for_status()
                 data = await resp.json()

@@ -3,6 +3,7 @@ import logging
 from typing import Optional
 import aiosqlite
 from db.database import upsert_registry_entry
+from utils import aiohttp_session
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,7 @@ TAOSTAT_JSON_URL = (
 
 
 async def fetch_taostat_json() -> dict:
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp_session() as session:
         async with session.get(TAOSTAT_JSON_URL,
                                timeout=aiohttp.ClientTimeout(total=15)) as resp:
             resp.raise_for_status()

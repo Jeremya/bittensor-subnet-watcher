@@ -6,10 +6,10 @@ import pytest
 def test_validate_config_exits_if_token_missing(monkeypatch):
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    # Call validate_config() directly — don't reload config, which would re-run
+    # load_dotenv() and restore the vars from .env before we can test.
+    import config
     with pytest.raises(SystemExit) as exc_info:
-        import importlib
-        import config
-        importlib.reload(config)
         config.validate_config()
     assert exc_info.value.code == 1
 

@@ -2,6 +2,7 @@ import aiohttp
 import logging
 from datetime import datetime, timezone
 from typing import Optional
+from utils import aiohttp_session
 import config
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class GitHubCollector:
 
         url = GITHUB_API.format(owner=owner, repo=repo)
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp_session() as session:
                 async with session.get(
                     url, headers=headers,
                     timeout=aiohttp.ClientTimeout(total=15)
