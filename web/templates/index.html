@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="60">
+  <title>TAO Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; }
+    header { background: #1a1a2e; padding: 12px 20px; display: flex;
+             gap: 24px; align-items: center; border-bottom: 1px solid #333; }
+    header h1 { font-size: 1.2rem; color: #00d4aa; }
+    header span { font-size: 0.85rem; color: #999; }
+    .layout { display: flex; gap: 0; height: calc(100vh - 50px); }
+    .leaderboard { flex: 1.5; overflow-y: auto; padding: 16px; }
+    .alert-feed { flex: 1; overflow-y: auto; padding: 16px;
+                  border-left: 1px solid #333; }
+    h2 { font-size: 0.9rem; color: #888; text-transform: uppercase;
+         letter-spacing: 1px; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; padding: 6px 8px; color: #666;
+         border-bottom: 1px solid #333; }
+    td { padding: 6px 8px; border-bottom: 1px solid #1a1a1a; }
+    tr:hover td { background: #1a1a1a; }
+    .score-high { color: #00c853; }
+    .score-med { color: #ffd600; }
+    .score-low { color: #ff5252; }
+    .score-null { color: #555; }
+    .alert-item { padding: 10px; border: 1px solid #333; margin-bottom: 8px;
+                  border-radius: 4px; font-size: 0.8rem; }
+    .alert-item .type { font-weight: bold; color: #00d4aa; }
+    .alert-item .time { color: #666; font-size: 0.75rem; }
+    .empty { color: #555; font-style: italic; padding: 20px 0; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>TAO Monitor</h1>
+  <span>Subnets: {{ subnet_count }}</span>
+  <span>Last poll: {{ last_poll or "never" }}</span>
+</header>
+<div class="layout">
+
+  <div class="leaderboard">
+    <h2>Leaderboard</h2>
+    {% if snapshots %}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Subnet</th><th>Yield</th><th>Quality</th>
+          <th>Momentum</th><th>Score</th><th>MCap (TAO)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in snapshots %}
+        {% set score = row.composite_score %}
+        {% set cls = "score-high" if score and score > 70 else ("score-med" if score and score > 40 else ("score-low" if score else "score-null")) %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>SN{{ row.netuid }}<br><small style="color:#666">{{ row.netuid }}</small></td>
+          <td>{{ "%.1f"|format(row.yield_score) if row.yield_score else "—" }}</td>
+          <td>{{ "%.1f"|format(row.quality_score) if row.quality_score else "—" }}</td>
+          <td>{{ "%.1f"|format(row.momentum_score) if row.momentum_score else "—" }}</td>
+          <td class="{{ cls }}">{{ "%.1f"|format(score) if score else "—" }}</td>
+          <td>{{ "{:,.0f}".format(row.alpha_mcap_tao) if row.alpha_mcap_tao else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Waiting for first poll…</p>
+    {% endif %}
+  </div>
+
+  <div class="alert-feed">
+    <h2>Alerts</h2>
+    {% if alerts %}
+    {% for alert in alerts %}
+    <div class="alert-item">
+      <div class="type">{{ alert.alert_type.replace("_", " ").title() }}
+        — SN{{ alert.netuid }} {{ alert.subnet_name }}</div>
+      <div>{{ alert.description }}</div>
+      <div class="time">{{ alert.fired_at }}</div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="empty">No alerts yet</p>
+    {% endif %}
+  </div>
+
+</div>
+</body>
+</html>
