@@ -135,6 +135,60 @@ async def get_snapshots_for_netuid(db: aiosqlite.Connection,
     return await cursor.fetchall()
 
 
+async def get_latest_snapshots_with_registry(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    """Latest snapshot per netuid LEFT JOINed with subnet_registry. Ordered by composite_score DESC."""
+    cursor = await db.execute("""
+        SELECT s.*, r.name, r.github_url, r.x_handle, r.website
+        FROM snapshots s
+        INNER JOIN (
+            SELECT netuid, MAX(polled_at) AS max_ts
+            FROM snapshots GROUP BY netuid
+        ) latest ON s.netuid = latest.netuid AND s.polled_at = latest.max_ts
+        LEFT JOIN subnet_registry r ON s.netuid = r.netuid
+        ORDER BY s.composite_score DESC NULLS LAST
+    """)
+    return await cursor.fetchall()
+
+
+async def get_emission_rank_24h_ago(db: aiosqlite.Connection) -> dict[int, Optional[int]]:
+    """Return {netuid: emission_rank} from the most recent snapshot ≥24h old per netuid."""
+    cursor = await db.execute("""
+        SELECT netuid, emission_rank
+        FROM snapshots s1
+        WHERE polled_at = (
+            SELECT MAX(polled_at) FROM snapshots s2
+            WHERE s2.netuid = s1.netuid
+            AND datetime(s2.polled_at) <= datetime('now', '-24 hours')
+        )
+    """)
+    rows = await cursor.fetchall()
+    return {row["netuid"]: row["emission_rank"] for row in rows}
+
+
+async def get_subnet_detail(db: aiosqlite.Connection,
+                             netuid: int) -> Optional[aiosqlite.Row]:
+    """Latest snapshot for one netuid LEFT JOINed with subnet_registry."""
+    cursor = await db.execute("""
+        SELECT s.*, r.name, r.github_url, r.x_handle, r.website
+        FROM snapshots s
+        LEFT JOIN subnet_registry r ON s.netuid = r.netuid
+        WHERE s.netuid = ?
+        ORDER BY s.polled_at DESC LIMIT 1
+    """, (netuid,))
+    return await cursor.fetchone()
+
+
+async def get_alerts_for_netuid(db: aiosqlite.Connection,
+                                 netuid: int,
+                                 limit: int = 10) -> list[aiosqlite.Row]:
+    """Most recent alerts for a specific subnet."""
+    cursor = await db.execute(
+        "SELECT * FROM alerts WHERE netuid = ? ORDER BY fired_at DESC LIMIT ?",
+        (netuid, limit)
+    )
+    return await cursor.fetchall()
+
+
 async def insert_alert(db: aiosqlite.Connection, alert: AlertRecord) -> None:
     await db.execute("""
         INSERT INTO alerts (fired_at, netuid, subnet_name, alert_type,

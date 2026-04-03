@@ -5,7 +5,9 @@ from datetime import datetime, timezone, timedelta
 from models import SubnetSnapshot, AlertRecord
 from db.database import SCHEMA_SQL, insert_snapshot, get_latest_snapshots, \
     insert_alert, get_unsent_alerts, mark_alerts_sent, is_alert_in_cooldown, \
-    prune_old_snapshots
+    prune_old_snapshots, upsert_registry_entry, \
+    get_latest_snapshots_with_registry, get_emission_rank_24h_ago, \
+    get_subnet_detail, get_alerts_for_netuid
 
 
 @pytest.fixture
@@ -88,3 +90,68 @@ async def test_prune_old_snapshots(db):
     await prune_old_snapshots(db, days=30)
     rows = await get_latest_snapshots(db)
     assert len(rows) == 1  # old row pruned
+
+
+# ── New DB functions ───────────────────────────────────────────────────────────
+
+async def test_get_latest_snapshots_with_registry_includes_name(db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=1, polled_at=now,
+                                              composite_score=80.0))
+    await upsert_registry_entry(db, 1, "Apex", "https://github.com/apex/sn",
+                                 "apex_subnet", "https://apex.ai")
+    rows = await get_latest_snapshots_with_registry(db)
+    assert len(rows) == 1
+    assert rows[0]["name"] == "Apex"
+    assert rows[0]["x_handle"] == "apex_subnet"
+
+
+async def test_get_latest_snapshots_with_registry_name_none_without_registry(db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=42, polled_at=now,
+                                              composite_score=50.0))
+    rows = await get_latest_snapshots_with_registry(db)
+    assert rows[0]["name"] is None  # no registry entry → LEFT JOIN produces NULL
+
+
+async def test_get_emission_rank_24h_ago_returns_old_rank(db):
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(hours=25)
+    await insert_snapshot(db, SubnetSnapshot(netuid=1, polled_at=old,
+                                              emission_rank=5))
+    await insert_snapshot(db, SubnetSnapshot(netuid=1, polled_at=now,
+                                              emission_rank=3))
+    result = await get_emission_rank_24h_ago(db)
+    assert result[1] == 5  # returns the OLD rank, not the current one
+
+
+async def test_get_emission_rank_24h_ago_ignores_recent_only(db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=1, polled_at=now,
+                                              emission_rank=3))
+    result = await get_emission_rank_24h_ago(db)
+    assert 1 not in result  # no snapshot older than 24h → nothing returned
+
+
+async def test_get_subnet_detail_includes_registry_data(db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=5, polled_at=now,
+                                              composite_score=60.0,
+                                              alpha_mcap_usd=1_200_000.0))
+    await upsert_registry_entry(db, 5, "Vision", None, None, "https://vision.ai")
+    row = await get_subnet_detail(db, 5)
+    assert row is not None
+    assert row["name"] == "Vision"
+    assert row["composite_score"] == pytest.approx(60.0)
+
+
+async def test_get_alerts_for_netuid_filters_correctly(db):
+    now = datetime.now(timezone.utc)
+    for netuid in [1, 2, 1]:
+        await insert_alert(db, AlertRecord(
+            fired_at=now, netuid=netuid, subnet_name=f"SN{netuid}",
+            alert_type="new_entry", description="x"
+        ))
+    rows = await get_alerts_for_netuid(db, 1, limit=10)
+    assert len(rows) == 2
+    assert all(r["netuid"] == 1 for r in rows)
