@@ -109,3 +109,22 @@ def test_score_snapshots_sets_composite():
     for s in snaps:
         assert s.composite_score is not None
         assert 0 <= s.composite_score <= 100
+
+
+def test_score_snapshots_weight_renormalization():
+    """When momentum_score is None, composite uses renormalized yield+quality weights."""
+    snap = make_snap(
+        1,
+        daily_emission_tao=50.0,
+        alpha_mcap_usd=5_000_000,
+        tao_usd_price=300.0,
+        n_neurons=200,
+        gh_last_push=datetime.now(timezone.utc) - timedelta(days=5),
+    )
+    # No history → momentum_score will be None
+    score_snapshots([snap], history_by_netuid={})
+    assert snap.momentum_score is None
+    assert snap.yield_score is not None
+    assert snap.quality_score is not None
+    expected = (snap.yield_score * 0.40 + snap.quality_score * 0.30) / 0.70
+    assert snap.composite_score == pytest.approx(expected, rel=0.01)

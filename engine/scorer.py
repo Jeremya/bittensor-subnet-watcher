@@ -102,7 +102,7 @@ def compute_momentum_score(snap: SubnetSnapshot,
 
     # emission rank change component (+/- 25 pts)
     # Better rank = lower number = more emissions
-    if snap.emission_rank and ref.emission_rank:
+    if snap.emission_rank is not None and ref.emission_rank is not None:
         rank_improvement = ref.emission_rank - snap.emission_rank
         # +25 pts for improving 5 positions, -25 pts for losing 5 positions (capped)
         score += max(-25.0, min(25.0, rank_improvement * 5.0))
