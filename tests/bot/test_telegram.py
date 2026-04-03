@@ -67,3 +67,21 @@ async def test_send_alerts_network_error_skips():
         sent_ids = await bot.send_alerts(alerts, alert_ids=[5])
 
     assert sent_ids == []  # not sent, notified=0 stays for next poll
+
+
+async def test_send_health_warning_sends_message():
+    bot = TelegramBot(token="fake_token", chat_id="123")
+    mock_send = AsyncMock(return_value=MagicMock())
+    with patch.object(bot._bot, "send_message", mock_send):
+        await bot.send_health_warning("Chain data missing")
+    mock_send.assert_called_once()
+    call_kwargs = mock_send.call_args
+    assert "Health Warning" in call_kwargs.kwargs.get("text", "")
+
+
+async def test_try_send_generic_exception_returns_false():
+    bot = TelegramBot(token="fake_token", chat_id="123")
+    with patch.object(bot._bot, "send_message",
+                      AsyncMock(side_effect=Exception("unexpected"))):
+        result = await bot._try_send("test message")
+    assert result is False
