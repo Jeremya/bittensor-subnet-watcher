@@ -23,7 +23,7 @@ QUALITY_WEIGHT: float = 0.30
 MOMENTUM_WEIGHT: float = 0.30
 
 # ── Alert thresholds ─────────────────────────────────────────────────────────
-EMISSION_DIVERGENCE_RATIO: float = 1.5      # emission_rank / mcap_rank > 1.5
+EMISSION_DIVERGENCE_RATIO: float = 1.5      # mcap_rank / emission_rank > 1.5
 DEAD_GITHUB_DAYS: int = 60                   # no commit in 60 days
 DEAD_GITHUB_MIN_MCAP_USD: float = 500_000.0 # only flag if mcap > $500K
 WHALE_INFLOW_PCT: float = 0.05              # >5% of alpha supply staked in one poll

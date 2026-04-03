@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def check_emission_divergence(snap: SubnetSnapshot,
                                emission_rank: int,
                                mcap_rank: int) -> Optional[AlertRecord]:
-    if emission_rank is None or mcap_rank is None or mcap_rank == 0:
+    if emission_rank is None or emission_rank == 0 or mcap_rank is None or mcap_rank == 0:
         return None
     ratio = mcap_rank / emission_rank
     if ratio > config.EMISSION_DIVERGENCE_RATIO:
@@ -35,7 +35,7 @@ def check_dead_github(snap: SubnetSnapshot) -> Optional[AlertRecord]:
     if snap.alpha_mcap_usd is None or snap.alpha_mcap_usd < config.DEAD_GITHUB_MIN_MCAP_USD:
         return None
     age_days = (datetime.now(timezone.utc) - snap.gh_last_push).days
-    if age_days >= config.DEAD_GITHUB_DAYS:
+    if age_days > config.DEAD_GITHUB_DAYS:
         return AlertRecord(
             fired_at=datetime.now(timezone.utc),
             netuid=snap.netuid,
@@ -100,7 +100,7 @@ def check_social_silence(snap: SubnetSnapshot) -> Optional[AlertRecord]:
     if snap.x_last_tweet is None:
         return None
     age_days = (datetime.now(timezone.utc) - snap.x_last_tweet).days
-    if age_days >= config.SOCIAL_SILENCE_DAYS:
+    if age_days > config.SOCIAL_SILENCE_DAYS:
         return AlertRecord(
             fired_at=datetime.now(timezone.utc),
             netuid=snap.netuid,

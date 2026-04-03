@@ -44,7 +44,7 @@ def test_emission_divergence_fires():
 
 def test_emission_divergence_does_not_fire_below_threshold():
     result = check_emission_divergence(make_snap(1), emission_rank=5, mcap_rank=6)
-    assert result is None  # 5/6 = 0.83 < 1.5
+    assert result is None  # mcap_rank/emission_rank = 6/5 = 1.2 < 1.5
 
 
 def test_dead_github_fires():
@@ -109,7 +109,7 @@ async def test_evaluate_alerts_respects_cooldown(db):
     )
     await insert_alert(db, existing)
 
-    snap = make_snap(1, emission_rank=3, alpha_mcap_usd=5_000_000)
+    snap = make_snap(1, emission_rank=3, alpha_mcap_tao=32000.0, alpha_mcap_usd=5_000_000)
     registry = {1: {"name": "Apex", "x_handle": None, "github_url": None}}
     prev_by_netuid = {}
     known_netuids = {1}
