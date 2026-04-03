@@ -188,11 +188,11 @@ async def main() -> None:
     await init_subtensor()
 
     # Init Telegram (validate token at startup)
-    from telegram.error import Forbidden
+    from telegram.error import Forbidden, InvalidToken
     _telegram = TelegramBot(config.TELEGRAM_BOT_TOKEN, config.TELEGRAM_CHAT_ID)
     try:
         await _telegram.validate_token()
-    except Forbidden:
+    except (Forbidden, InvalidToken):
         logger.error("[STARTUP ERROR] Invalid Telegram token. Check TELEGRAM_BOT_TOKEN.")
         raise SystemExit(1)
 
