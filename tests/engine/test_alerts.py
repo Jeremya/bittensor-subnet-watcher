@@ -154,3 +154,23 @@ async def test_evaluate_alerts_respects_cooldown(db):
     # Should not fire again (cooldown)
     em_div_alerts = [a for a in alerts if a.alert_type == "emission_divergence" and a.netuid == 1]
     assert len(em_div_alerts) == 0
+
+
+async def test_evaluate_alerts_fires_ownership_transfer(db):
+    snap = make_snap(
+        1,
+        owner_coldkey="5XYZnewowner456789xyz",
+        emission_rank=5,
+        alpha_mcap_tao=1000.0,
+        alpha_mcap_usd=100_000.0,
+    )
+    prev_snap = make_snap(1, owner_coldkey="5ABColdowner123abc")
+    registry = {1: {"name": "TestNet", "x_handle": None, "github_url": None}}
+    known_netuids = {1}
+
+    alerts = await evaluate_alerts(
+        db, [snap], registry, {1: prev_snap}, known_netuids
+    )
+    transfer_alerts = [a for a in alerts if a.alert_type == "ownership_transfer"]
+    assert len(transfer_alerts) == 1
+    assert transfer_alerts[0].netuid == 1

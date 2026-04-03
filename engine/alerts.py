@@ -154,7 +154,7 @@ async def evaluate_alerts(
     known_netuids: set[int],
 ) -> list[AlertRecord]:
     """
-    Evaluate all 6 alert conditions across all snapshots.
+    Evaluate all 7 alert conditions across all snapshots.
     Dedup via cooldown check. Persist new alerts to DB.
     Returns list of newly fired alerts.
     """
@@ -188,10 +188,14 @@ async def evaluate_alerts(
         if prev:
             candidates.append(check_github_spike(snap, prev))
 
-        # 5. Social silence
+        # 5. Ownership transfer (requires prev)
+        if prev:
+            candidates.append(check_ownership_transfer(snap, prev))
+
+        # 6. Social silence
         candidates.append(check_social_silence(snap))
 
-        # 6. New entry
+        # 7. New entry
         candidates.append(check_new_entry(snap, known_netuids))
 
         # Dedup and persist
