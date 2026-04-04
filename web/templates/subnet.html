@@ -291,7 +291,7 @@
     <div class="card full-width">
       <h3>Alert History · this subnet</h3>
       {% if alerts %}
-      {% for alert in alerts[:10] %}
+      {% for alert in alerts %}
       <div class="alert-item">
         <div class="alert-type">{{ (alert.alert_type or "")|replace("_", " ")|title }}</div>
         <div class="alert-desc">{{ alert.description }}</div>

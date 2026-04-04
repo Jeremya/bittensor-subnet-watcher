@@ -88,3 +88,24 @@ async def test_dashboard_shows_mcap_usd(app, db):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/")
     assert "$2.1M" in resp.text
+
+
+async def test_subnet_detail_returns_200(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=5, polled_at=now,
+                                              composite_score=72.0,
+                                              emission_rank=3,
+                                              alpha_mcap_tao=1000.0))
+    await upsert_registry_entry(db, 5, "Templar", None, None, None)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/subnet/5")
+    assert resp.status_code == 200
+    assert "Templar" in resp.text
+    assert "SN5" in resp.text
+    assert "Chain Stats" in resp.text
+
+
+async def test_subnet_detail_returns_404_for_unknown(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/subnet/9999")
+    assert resp.status_code == 404
