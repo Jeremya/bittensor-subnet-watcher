@@ -8,9 +8,15 @@ logger = logging.getLogger(__name__)
 
 
 def _raw_yield(snap: SubnetSnapshot) -> Optional[float]:
-    """Annualized yield ratio: (daily_tao_emission * 365) / alpha_mcap_usd
-    Returns None for micro-caps below YIELD_MIN_MCAP_USD — illiquid subnets
-    produce extreme ratios that swamp the min-max normalization.
+    """Annualized emission yield: (daily_emission_tao * tao_price * 365) / alpha_mcap_usd
+
+    NOTE: daily_emission_tao reflects a subnet's current share of total TAO emissions,
+    which is determined by net TAO inflows smoothed over an 86.8-day EMA. This means
+    the yield is a lagged metric — it reflects capital flows from the past ~3 months,
+    not the current flow direction. Use momentum (tao_in change) as the leading indicator.
+
+    Returns None for micro-caps below YIELD_MIN_MCAP_USD — illiquid subnets produce
+    extreme ratios that swamp min-max normalization.
     """
     if (snap.daily_emission_tao is None
             or snap.tao_usd_price is None
@@ -82,7 +88,16 @@ def compute_quality_score(snap: SubnetSnapshot,
 def compute_momentum_score(snap: SubnetSnapshot,
                             history: list[SubnetSnapshot]) -> Optional[float]:
     """
-    Momentum score (0–100) based on 7-day mcap change and emission rank change.
+    Momentum score (0–100) based on TAO inflow direction and emission rank trend.
+
+    Subnet emission share is determined by net TAO flows (staking inflows minus
+    outflows), smoothed over an 86.8-day EMA. alpha_mcap_tao is the cumulative
+    TAO staked in the pool; its week-over-week change is the actual flow signal
+    and the leading indicator of future emission share.
+
+    Emission rank change is kept as a secondary lagged confirmation (+/- 15 pts)
+    because it reflects EMA-smoothed flows from ~3 months prior.
+
     Returns None if no historical snapshot exists (new subnet).
     """
     if not history:
@@ -99,18 +114,22 @@ def compute_momentum_score(snap: SubnetSnapshot,
 
     score = 50.0  # neutral baseline
 
-    # mcap change component (+/- 25 pts)
+    # Primary: TAO inflow change (+/- 35 pts)
+    # alpha_mcap_tao = tao_in (TAO staked into the subnet pool).
+    # Its percentage change is the net flow direction — the actual driver of
+    # future emission share. This is the leading indicator.
     if snap.alpha_mcap_tao and ref.alpha_mcap_tao and ref.alpha_mcap_tao > 0:
-        mcap_change = (snap.alpha_mcap_tao - ref.alpha_mcap_tao) / ref.alpha_mcap_tao
-        # +25 pts for +50% gain, -25 pts for -50% loss (capped)
-        score += max(-25.0, min(25.0, mcap_change * 50.0))
+        flow_change = (snap.alpha_mcap_tao - ref.alpha_mcap_tao) / ref.alpha_mcap_tao
+        # +35 pts for +50% inflow growth, -35 pts for -50% outflow (capped)
+        score += max(-35.0, min(35.0, flow_change * 70.0))
 
-    # emission rank change component (+/- 25 pts)
-    # Better rank = lower number = more emissions
+    # Secondary: emission rank change (+/- 15 pts)
+    # Lagged confirmation — reflects EMA-smoothed flows from ~86.8 days ago.
+    # Better rank = lower number = larger share of total emissions.
     if snap.emission_rank is not None and ref.emission_rank is not None:
         rank_improvement = ref.emission_rank - snap.emission_rank
-        # +25 pts for improving 5 positions, -25 pts for losing 5 positions (capped)
-        score += max(-25.0, min(25.0, rank_improvement * 5.0))
+        # +15 pts for improving 5 positions, -15 pts for losing 5 positions (capped)
+        score += max(-15.0, min(15.0, rank_improvement * 3.0))
 
     return round(max(0.0, min(100.0, score)), 2)
 

@@ -95,16 +95,29 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         momentum_why = "no history"
         history = await get_snapshots_for_netuid(db, netuid, limit=8)
         if len(history) >= 2:
-            oldest_rank = history[-1]["emission_rank"]
+            oldest = history[-1]
+            polls = len(history) - 1
+            parts = []
+            # Primary: TAO inflow direction (leading indicator)
+            tao_now = snap["alpha_mcap_tao"]
+            tao_old = oldest["alpha_mcap_tao"]
+            if tao_now is not None and tao_old and tao_old > 0:
+                flow_pct = (tao_now - tao_old) / tao_old * 100
+                if flow_pct > 1:
+                    parts.append(f"+{flow_pct:.0f}% tao in {polls} polls")
+                elif flow_pct < -1:
+                    parts.append(f"{flow_pct:.0f}% tao in {polls} polls")
+                else:
+                    parts.append("tao stable")
+            # Secondary: emission rank change (lagged)
+            oldest_rank = oldest["emission_rank"]
             if oldest_rank is not None and em_rank is not None:
                 delta = oldest_rank - em_rank
-                polls = len(history) - 1
                 if delta > 0:
-                    momentum_why = f"+{delta} em ranks in {polls} polls"
+                    parts.append(f"em +{delta} ranks")
                 elif delta < 0:
-                    momentum_why = f"{delta} em ranks in {polls} polls"
-                else:
-                    momentum_why = "stable"
+                    parts.append(f"em {delta} ranks")
+            momentum_why = " · ".join(parts) if parts else "stable"
 
         hype_why = "no social data"
         hype_parts = []
