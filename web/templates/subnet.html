@@ -98,7 +98,7 @@
         <div class="score-bar-wrap"></div>
         <span class="score-val" style="color:#555">—</span>
         {% endif %}
-        <span class="score-why">{{ yield_why }}</span>
+        <span class="score-why">{{ yield_why | default("") }}</span>
       </div>
 
       {# Quality score row #}
@@ -115,7 +115,7 @@
         <div class="score-bar-wrap"></div>
         <span class="score-val" style="color:#555">—</span>
         {% endif %}
-        <span class="score-why">{{ quality_why }}</span>
+        <span class="score-why">{{ quality_why | default("") }}</span>
       </div>
 
       {# Momentum score row #}
@@ -132,7 +132,7 @@
         <div class="score-bar-wrap"></div>
         <span class="score-val" style="color:#555">—</span>
         {% endif %}
-        <span class="score-why">{{ momentum_why }}</span>
+        <span class="score-why">{{ momentum_why | default("") }}</span>
       </div>
 
       {# Composite #}
@@ -182,7 +182,7 @@
         <div class="stat">
           <span class="stat-label">Alpha Price</span>
           {% if snap.alpha_price_tao is not none %}
-          <span class="stat-value">{{ snap.alpha_price_tao }} τ</span>
+          <span class="stat-value">{{ "%.6f"|format(snap.alpha_price_tao) }} τ</span>
           {% else %}
           <span class="stat-value" style="color:#555">—</span>
           {% endif %}
@@ -209,7 +209,7 @@
         <div class="stat">
           <span class="stat-label">Reg Cost</span>
           {% if snap.reg_cost_tao is not none %}
-          <span class="stat-value">{{ snap.reg_cost_tao }} τ</span>
+          <span class="stat-value">{{ "%.4f"|format(snap.reg_cost_tao) }} τ</span>
           {% else %}
           <span class="stat-value" style="color:#555">—</span>
           {% endif %}
