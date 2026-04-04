@@ -102,8 +102,8 @@
     {% if alerts %}
     {% for alert in alerts %}
     <div class="alert-item">
-      <div class="type">{{ alert.alert_type.replace("_", " ").title() }}
-        — SN{{ alert.netuid }} {{ alert.subnet_name }}</div>
+      <div class="type">{{ (alert.alert_type or "")|replace("_", " ")|title }}
+        — SN{{ alert.netuid }} {{ alert.subnet_name or "" }}</div>
       <div>{{ alert.description }}</div>
       <div class="time">{{ alert.fired_at }}</div>
     </div>

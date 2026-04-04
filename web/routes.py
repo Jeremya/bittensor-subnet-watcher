@@ -80,14 +80,15 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
 
         em_rank = snap["emission_rank"]
         yield_why = "no emission data"
-        if em_rank and mcap_rank:
+        if em_rank is not None and mcap_rank is not None:
             ratio = mcap_rank / em_rank
             yield_why = f"em #{em_rank} vs mc #{mcap_rank} → {ratio:.1f}× gap"
 
         quality_why = "no GitHub data"
         if snap["gh_last_push"]:
+            # SQLite stores timestamps as 'YYYY-MM-DD HH:MM:SS' (no tz); treat as UTC
             age = (datetime.now(timezone.utc) -
-                   datetime.fromisoformat(snap["gh_last_push"])).days
+                   datetime.fromisoformat(snap["gh_last_push"]).replace(tzinfo=timezone.utc)).days
             stars = snap["gh_stars"] or 0
             quality_why = f"pushed {age}d ago · {stars:,} ⭐"
 
@@ -95,7 +96,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         history = await get_snapshots_for_netuid(db, netuid, limit=8)
         if len(history) >= 2:
             oldest_rank = history[-1]["emission_rank"]
-            if oldest_rank and em_rank:
+            if oldest_rank is not None and em_rank is not None:
                 delta = oldest_rank - em_rank
                 polls = len(history) - 1
                 if delta > 0:
@@ -109,11 +110,11 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         gh_push_age_days = None
         if snap["gh_last_push"]:
             gh_push_age_days = (now_utc -
-                                datetime.fromisoformat(snap["gh_last_push"])).days
+                                datetime.fromisoformat(snap["gh_last_push"]).replace(tzinfo=timezone.utc)).days
         x_tweet_age_days = None
         if snap["x_last_tweet"]:
             x_tweet_age_days = (now_utc -
-                                datetime.fromisoformat(snap["x_last_tweet"])).days
+                                datetime.fromisoformat(snap["x_last_tweet"]).replace(tzinfo=timezone.utc)).days
 
         return templates.TemplateResponse(request, "subnet.html", {
             "snap": dict(snap),
