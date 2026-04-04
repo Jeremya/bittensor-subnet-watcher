@@ -55,6 +55,14 @@ def test_yield_score_none_when_missing_data():
     assert snaps[0].yield_score is None
 
 
+def test_yield_score_none_below_min_mcap():
+    """Micro-caps are excluded to prevent them dominating min-max normalization."""
+    snaps = [make_snap(1, daily_emission_tao=10.0, alpha_mcap_usd=10_000.0,
+                       tao_usd_price=300.0)]
+    compute_yield_scores(snaps)
+    assert snaps[0].yield_score is None
+
+
 # ── Quality score ─────────────────────────────────────────────────────────────
 
 def test_quality_score_recent_github():

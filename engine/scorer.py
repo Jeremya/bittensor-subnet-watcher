@@ -8,11 +8,16 @@ logger = logging.getLogger(__name__)
 
 
 def _raw_yield(snap: SubnetSnapshot) -> Optional[float]:
-    """Annualized yield ratio: (daily_tao_emission * 365) / alpha_mcap_usd"""
+    """Annualized yield ratio: (daily_tao_emission * 365) / alpha_mcap_usd
+    Returns None for micro-caps below YIELD_MIN_MCAP_USD — illiquid subnets
+    produce extreme ratios that swamp the min-max normalization.
+    """
     if (snap.daily_emission_tao is None
             or snap.tao_usd_price is None
             or not snap.alpha_mcap_usd
             or snap.alpha_mcap_usd <= 0):
+        return None
+    if snap.alpha_mcap_usd < config.YIELD_MIN_MCAP_USD:
         return None
     return (snap.daily_emission_tao * snap.tao_usd_price * 365) / snap.alpha_mcap_usd
 
