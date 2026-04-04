@@ -71,8 +71,8 @@
       <tbody>
         {% for row in snapshots %}
         {% set score = row.composite_score %}
-        {% set cls = "score-high" if score and score > 70
-                     else ("score-med" if score and score > 40
+        {% set cls = "score-high" if score and score >= 70
+                     else ("score-med" if score and score >= 40
                      else ("score-low" if score else "score-null")) %}
         {% set trend_cls = "trend-up" if row.trend == "▲"
                            else ("trend-down" if row.trend == "▼" else "trend-flat") %}
