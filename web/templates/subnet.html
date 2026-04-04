@@ -69,7 +69,7 @@
 <div class="header">
   <a href="/">← Leaderboard</a>
   <h1>{{ snap.name or ("SN" ~ snap.netuid) }}</h1>
-  <span class="sub">SN{{ snap.netuid }}{% if score_rank %} · #{{ score_rank }} by score{% endif %}</span>
+  <span class="sub">SN{{ snap.netuid }}{% if score_rank is not none %} · #{{ score_rank }} by score{% endif %}</span>
   <div class="links">
     {% if snap.github_url %}<a href="{{ snap.github_url }}" target="_blank" rel="noopener">GitHub ↗</a>{% endif %}
     {% if snap.website %}<a href="{{ snap.website }}" target="_blank" rel="noopener">Website ↗</a>{% endif %}
@@ -91,7 +91,7 @@
         <span class="score-label">Yield</span>
         {% if y is not none %}
         <div class="score-bar-wrap">
-          <div class="score-bar {{ y_cls }}" style="width:{{ [y|int, 100]|min }}%; background:{% if y >= 70 %}#00c853{% elif y >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
+          <div class="score-bar {{ y_cls }}" style="width:{{ [(y or 0)|int, 100]|min }}%; background:{% if y >= 70 %}#00c853{% elif y >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
         </div>
         <span class="score-val {{ y_cls }}">{{ "%.1f"|format(y) }}</span>
         {% else %}
@@ -108,7 +108,7 @@
         <span class="score-label">Quality</span>
         {% if q is not none %}
         <div class="score-bar-wrap">
-          <div class="score-bar {{ q_cls }}" style="width:{{ [q|int, 100]|min }}%; background:{% if q >= 70 %}#00c853{% elif q >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
+          <div class="score-bar {{ q_cls }}" style="width:{{ [(q or 0)|int, 100]|min }}%; background:{% if q >= 70 %}#00c853{% elif q >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
         </div>
         <span class="score-val {{ q_cls }}">{{ "%.1f"|format(q) }}</span>
         {% else %}
@@ -125,7 +125,7 @@
         <span class="score-label">Momentum</span>
         {% if m is not none %}
         <div class="score-bar-wrap">
-          <div class="score-bar {{ m_cls }}" style="width:{{ [m|int, 100]|min }}%; background:{% if m >= 70 %}#00c853{% elif m >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
+          <div class="score-bar {{ m_cls }}" style="width:{{ [(m or 0)|int, 100]|min }}%; background:{% if m >= 70 %}#00c853{% elif m >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
         </div>
         <span class="score-val {{ m_cls }}">{{ "%.1f"|format(m) }}</span>
         {% else %}
@@ -291,7 +291,7 @@
     <div class="card full-width">
       <h3>Alert History · this subnet</h3>
       {% if alerts %}
-      {% for alert in alerts %}
+      {% for alert in alerts[:10] %}
       <div class="alert-item">
         <div class="alert-type">{{ (alert.alert_type or "")|replace("_", " ")|title }}</div>
         <div class="alert-desc">{{ alert.description }}</div>
