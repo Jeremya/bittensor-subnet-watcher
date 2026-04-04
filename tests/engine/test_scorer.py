@@ -11,6 +11,7 @@ from engine.scorer import (
 )
 
 
+
 def make_snap(netuid: int, **kwargs) -> SubnetSnapshot:
     return SubnetSnapshot(
         netuid=netuid,
@@ -70,7 +71,7 @@ def test_quality_score_recent_github():
     snap = make_snap(1, gh_last_push=now - timedelta(days=10), n_neurons=256)
     score = compute_quality_score(snap, max_neurons=512)
     assert score is not None
-    assert score >= 40  # recent push gives 40 pts
+    assert score >= 30  # recent push gives 30 pts
 
 
 def test_quality_score_old_github():
@@ -78,13 +79,39 @@ def test_quality_score_old_github():
     snap = make_snap(1, gh_last_push=now - timedelta(days=120), n_neurons=256)
     score = compute_quality_score(snap, max_neurons=512)
     assert score is not None
-    assert score < 40  # no points for old push
+    assert score < 30  # no points for old push
 
 
 def test_quality_score_none_github_gives_partial():
     snap = make_snap(1, gh_last_push=None, n_neurons=256)
     score = compute_quality_score(snap, max_neurons=512)
-    assert score is not None  # still gets neurons score
+    assert score is not None  # still gets fill ratio score
+
+
+def test_quality_score_fill_ratio_uses_max_allowed_uids():
+    snap = make_snap(1, n_neurons=128, max_allowed_uids=256)
+    score = compute_quality_score(snap)
+    # fill = 128/256 = 0.5 → 15 pts; no github, no liquidity
+    assert score == pytest.approx(15.0)
+
+
+def test_quality_score_liquidity_high():
+    snap = make_snap(1, volume_24h_alpha=100.0, alpha_mcap_tao=1000.0)
+    # ratio = 0.10 > 0.05 → 40 pts; no github, no neurons
+    score = compute_quality_score(snap)
+    assert score == pytest.approx(40.0)
+
+
+def test_quality_score_liquidity_medium():
+    snap = make_snap(1, volume_24h_alpha=20.0, alpha_mcap_tao=1000.0)
+    # ratio = 0.02, between 0.01 and 0.05 → 25 pts
+    score = compute_quality_score(snap)
+    assert score == pytest.approx(25.0)
+
+
+def test_quality_score_none_when_all_absent():
+    snap = make_snap(1)
+    assert compute_quality_score(snap) is None
 
 
 # ── Momentum score ────────────────────────────────────────────────────────────
@@ -146,7 +173,7 @@ def test_score_snapshots_sets_composite():
 
 
 def test_score_snapshots_weight_renormalization():
-    """When momentum and hype scores are None, composite uses renormalized yield+quality weights."""
+    """When momentum_score is None, composite uses renormalized yield+quality weights."""
     snap = make_snap(
         1,
         daily_emission_tao=50.0,
@@ -154,17 +181,31 @@ def test_score_snapshots_weight_renormalization():
         tao_usd_price=300.0,
         n_neurons=200,
         gh_last_push=datetime.now(timezone.utc) - timedelta(days=5),
-        # No social data → hype_score will be None
         # No history → momentum_score will be None
     )
     score_snapshots([snap], history_by_netuid={})
     assert snap.momentum_score is None
-    assert snap.hype_score is None
     assert snap.yield_score is not None
     assert snap.quality_score is not None
     w_y, w_q = config.YIELD_WEIGHT, config.QUALITY_WEIGHT
     expected = (snap.yield_score * w_y + snap.quality_score * w_q) / (w_y + w_q)
     assert snap.composite_score == pytest.approx(expected, rel=0.01)
+
+
+def test_hype_score_not_included_in_composite():
+    """Hype is computed for display but must not affect composite score."""
+    now = datetime.now(timezone.utc)
+    base = make_snap(1, daily_emission_tao=50.0, alpha_mcap_usd=5_000_000,
+                     tao_usd_price=300.0, n_neurons=200,
+                     gh_last_push=now - timedelta(days=5))
+    with_hype = make_snap(1, daily_emission_tao=50.0, alpha_mcap_usd=5_000_000,
+                          tao_usd_price=300.0, n_neurons=200,
+                          gh_last_push=now - timedelta(days=5),
+                          x_followers=50000, x_last_tweet=now - timedelta(days=1))
+    score_snapshots([base], history_by_netuid={})
+    score_snapshots([with_hype], history_by_netuid={})
+    assert with_hype.hype_score is not None
+    assert base.composite_score == pytest.approx(with_hype.composite_score, rel=0.01)
 
 
 # ── Hype score ────────────────────────────────────────────────────────────────

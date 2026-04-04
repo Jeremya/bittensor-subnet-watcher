@@ -87,6 +87,7 @@ class ChainCollector:
                     daily_emission_tao=daily_em,
                     owner_coldkey=getattr(dyn, "owner_coldkey", None),
                     n_neurons=info.subnetwork_n if info else None,
+                    max_allowed_uids=info.max_n if info else None,
                     reg_cost_tao=info.burn.tao if info else None,
                 )
                 snapshots.append(snap)

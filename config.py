@@ -17,13 +17,14 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
 # ── Scoring weights ───────────────────────────────────────────────────────────
 # Yield is the primary dTAO alpha signal (emission rank ÷ mcap rank arbitrage).
-# Quality gates out dead subnets. Momentum confirms entry timing.
-# Hype captures social traction (X followers + tweet recency).
+# Quality gates out dead subnets (GitHub recency, neuron fill ratio, liquidity).
+# Momentum is net TAO inflow direction — the actual emission share driver.
+# Hype (X followers/recency) is intentionally excluded from composite: it is
+# gameable, protocol-external, and displayed as informational on the detail page.
 YIELD_MIN_MCAP_USD: float = 50_000.0  # exclude micro-caps from yield scoring
-YIELD_WEIGHT: float = 0.35
-QUALITY_WEIGHT: float = 0.25
-MOMENTUM_WEIGHT: float = 0.25
-HYPE_WEIGHT: float = 0.15
+YIELD_WEIGHT: float = 0.40
+QUALITY_WEIGHT: float = 0.30
+MOMENTUM_WEIGHT: float = 0.30
 
 # ── Alert thresholds ─────────────────────────────────────────────────────────
 EMISSION_DIVERGENCE_RATIO: float = 1.5      # mcap_rank / emission_rank > 1.5

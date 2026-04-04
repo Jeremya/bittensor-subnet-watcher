@@ -58,29 +58,55 @@ def compute_yield_scores(snapshots: list[SubnetSnapshot]) -> None:
 def compute_quality_score(snap: SubnetSnapshot,
                            max_neurons: int = 512) -> Optional[float]:
     """
-    Quality score (0–100):
-      GitHub recency: <30d = 40pts, <90d = 20pts, else 0
-      n_neurons normalized to 0–60pts (relative to max_neurons)
+    Quality score (0–100) — protocol-native health signals only:
+
+      GitHub recency (0–30 pts): team is actively shipping
+        <30d = 30pts, <90d = 15pts, else 0
+
+      Neuron fill ratio (0–30 pts): n_neurons / max_allowed_uids
+        Full metagraph = competitive subnet with genuine demand.
+        Falls back to n_neurons / max_neurons if max_allowed_uids unavailable.
+
+      Liquidity depth (0–40 pts): volume_24h_alpha / alpha_mcap_tao
+        Measures daily turnover of the TAO pool — can an investor actually exit?
+        >5% daily turnover = 40pts, >1% = 25pts, >0.1% = 10pts, else 0
+
+    Returns None only if all three data sources are absent.
     """
+    if (snap.gh_last_push is None
+            and snap.n_neurons is None
+            and snap.volume_24h_alpha is None):
+        return None
+
     score = 0.0
     now = datetime.now(timezone.utc)
 
-    # GitHub recency (0–40 pts)
+    # GitHub recency (0–30 pts)
     if snap.gh_last_push is not None:
         age_days = (now - snap.gh_last_push).days
         if age_days < 30:
-            score += 40.0
+            score += 30.0
         elif age_days < 90:
-            score += 20.0
-        # else 0
+            score += 15.0
 
-    # n_neurons (0–60 pts)
-    if snap.n_neurons is not None and max_neurons > 0:
-        score += min(snap.n_neurons / max_neurons, 1.0) * 60.0
+    # Neuron fill ratio (0–30 pts)
+    if snap.n_neurons is not None:
+        if snap.max_allowed_uids and snap.max_allowed_uids > 0:
+            fill = min(snap.n_neurons / snap.max_allowed_uids, 1.0)
+        else:
+            fill = min(snap.n_neurons / max_neurons, 1.0)
+        score += fill * 30.0
 
-    # If no data at all, return None
-    if snap.gh_last_push is None and snap.n_neurons is None:
-        return None
+    # Liquidity depth (0–40 pts)
+    if (snap.volume_24h_alpha is not None
+            and snap.alpha_mcap_tao and snap.alpha_mcap_tao > 0):
+        ratio = snap.volume_24h_alpha / snap.alpha_mcap_tao
+        if ratio > 0.05:
+            score += 40.0
+        elif ratio > 0.01:
+            score += 25.0
+        elif ratio > 0.001:
+            score += 10.0
 
     return round(score, 2)
 
@@ -197,9 +223,11 @@ def score_snapshots(snapshots: list[SubnetSnapshot],
         snap.momentum_score = compute_momentum_score(
             snap, history=history_by_netuid.get(snap.netuid, [])
         )
+        # Hype is computed for display but intentionally excluded from composite —
+        # it is gameable (purchased followers, low-effort tweets) and protocol-external.
         snap.hype_score = compute_hype_score(snap, max_followers=max_followers)
 
-        # Composite: weighted sum of available sub-scores
+        # Composite: weighted sum of protocol-native scores only
         parts = []
         if snap.yield_score is not None:
             parts.append((snap.yield_score, config.YIELD_WEIGHT))
@@ -207,8 +235,6 @@ def score_snapshots(snapshots: list[SubnetSnapshot],
             parts.append((snap.quality_score, config.QUALITY_WEIGHT))
         if snap.momentum_score is not None:
             parts.append((snap.momentum_score, config.MOMENTUM_WEIGHT))
-        if snap.hype_score is not None:
-            parts.append((snap.hype_score, config.HYPE_WEIGHT))
 
         if parts:
             total_weight = sum(w for _, w in parts)

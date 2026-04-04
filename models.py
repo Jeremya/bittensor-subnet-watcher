@@ -19,6 +19,7 @@ class SubnetSnapshot:
     net_tao_flow_tao: Optional[float] = None   # Δ(tao_in) − emission_accrual since prev poll
                                                # = pure net staking inflows (positive) or outflows (negative)
     n_neurons: Optional[int] = None            # SubnetInfo.subnetwork_n
+    max_allowed_uids: Optional[int] = None     # SubnetInfo.max_n (capacity ceiling)
     reg_cost_tao: Optional[float] = None       # SubnetInfo.burn.tao
     owner_coldkey: Optional[str] = None
 

@@ -135,23 +135,6 @@
         <span class="score-why">{{ momentum_why | default("") }}</span>
       </div>
 
-      {# Hype score row #}
-      {% set h = snap.hype_score %}
-      {% set h_cls = score_cls(h) %}
-      <div class="score-row">
-        <span class="score-label">Hype</span>
-        {% if h is not none %}
-        <div class="score-bar-wrap">
-          <div class="score-bar {{ h_cls }}" style="width:{{ [(h or 0)|int, 100]|min }}%; background:{% if h >= 70 %}#00c853{% elif h >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
-        </div>
-        <span class="score-val {{ h_cls }}">{{ "%.1f"|format(h) }}</span>
-        {% else %}
-        <div class="score-bar-wrap"></div>
-        <span class="score-val" style="color:#555">—</span>
-        {% endif %}
-        <span class="score-why">{{ hype_why | default("") }}</span>
-      </div>
-
       {# Composite #}
       {% set c = snap.composite_score %}
       {% set c_cls = score_cls(c) %}
@@ -301,6 +284,13 @@
           {% endif %}
         </div>
       </div>
+      {% if snap.hype_score is not none %}
+      <div style="margin-top:10px; padding-top:8px; border-top:1px solid #1e1e1e;
+                  font-size:0.72rem; color:#444;">
+        hype signal {{ "%.0f"|format(snap.hype_score) }}/100 · {{ hype_why | default("") }}
+        <span style="margin-left:6px; color:#333">(not scored — display only)</span>
+      </div>
+      {% endif %}
     </div>
     {% endif %}
 
