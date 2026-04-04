@@ -21,11 +21,18 @@
     th { text-align: left; padding: 6px 8px; color: #666;
          border-bottom: 1px solid #333; }
     td { padding: 6px 8px; border-bottom: 1px solid #1a1a1a; }
-    tr:hover td { background: #1a1a1a; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td { background: #1a1a1a; }
+    tr.clickable:hover .sn-name { color: #00ffcc; }
+    .sn-name { color: #00d4aa; }
+    .sn-id { color: #444; margin-left: 4px; font-size: 0.9em; }
     .score-high { color: #00c853; }
-    .score-med { color: #ffd600; }
-    .score-low { color: #ff5252; }
+    .score-med  { color: #ffd600; }
+    .score-low  { color: #ff5252; }
     .score-null { color: #555; }
+    .trend-up   { color: #00c853; }
+    .trend-flat { color: #555; }
+    .trend-down { color: #ff5252; }
     .alert-item { padding: 10px; border: 1px solid #333; margin-bottom: 8px;
                   border-radius: 4px; font-size: 0.8rem; }
     .alert-item .type { font-weight: bold; color: #00d4aa; }
@@ -34,6 +41,15 @@
   </style>
 </head>
 <body>
+
+{% macro fmt_usd(v) -%}
+{%- if v is none %}—
+{%- elif v >= 1000000 %}${{ "%.1f"|format(v / 1000000) }}M
+{%- elif v >= 1000 %}${{ "%.0f"|format(v / 1000) }}K
+{%- else %}${{ "%.0f"|format(v) }}
+{%- endif %}
+{%- endmacro %}
+
 <header>
   <h1>TAO Monitor</h1>
   <span>Subnets: {{ subnet_count }}</span>
@@ -47,22 +63,31 @@
     <table>
       <thead>
         <tr>
-          <th>#</th><th>Subnet</th><th>Yield</th><th>Quality</th>
-          <th>Momentum</th><th>Score</th><th>MCap (TAO)</th>
+          <th>#</th><th>Subnet</th><th>Score</th>
+          <th>Em. Rank</th><th>MC. Rank</th>
+          <th>MCap</th><th>Emit/day</th><th>Trend</th>
         </tr>
       </thead>
       <tbody>
         {% for row in snapshots %}
         {% set score = row.composite_score %}
-        {% set cls = "score-high" if score and score > 70 else ("score-med" if score and score > 40 else ("score-low" if score else "score-null")) %}
-        <tr>
-          <td>{{ loop.index }}</td>
-          <td>SN{{ row.netuid }}<br><small style="color:#666">{{ row.netuid }}</small></td>
-          <td>{{ "%.1f"|format(row.yield_score) if row.yield_score else "—" }}</td>
-          <td>{{ "%.1f"|format(row.quality_score) if row.quality_score else "—" }}</td>
-          <td>{{ "%.1f"|format(row.momentum_score) if row.momentum_score else "—" }}</td>
+        {% set cls = "score-high" if score and score > 70
+                     else ("score-med" if score and score > 40
+                     else ("score-low" if score else "score-null")) %}
+        {% set trend_cls = "trend-up" if row.trend == "▲"
+                           else ("trend-down" if row.trend == "▼" else "trend-flat") %}
+        <tr class="clickable" onclick="location.href='/subnet/{{ row.netuid }}'">
+          <td class="score-null">{{ loop.index }}</td>
+          <td>
+            <span class="sn-name">{{ row.name or ("SN" ~ row.netuid) }}</span>
+            <span class="sn-id">SN{{ row.netuid }}</span>
+          </td>
           <td class="{{ cls }}">{{ "%.1f"|format(score) if score else "—" }}</td>
-          <td>{{ "{:,.0f}".format(row.alpha_mcap_tao) if row.alpha_mcap_tao else "—" }}</td>
+          <td>{{ ("#" ~ row.emission_rank) if row.emission_rank else "—" }}</td>
+          <td>{{ ("#" ~ row.mcap_rank) if row.mcap_rank else "—" }}</td>
+          <td>{{ fmt_usd(row.alpha_mcap_usd) }}</td>
+          <td>{{ ("%.0f"|format(row.daily_emission_tao) ~ " τ") if row.daily_emission_tao else "—" }}</td>
+          <td class="{{ trend_cls }}">{{ row.trend }}</td>
         </tr>
         {% endfor %}
       </tbody>

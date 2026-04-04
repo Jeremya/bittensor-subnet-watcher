@@ -3,7 +3,7 @@ import pytest
 import aiosqlite
 from httpx import AsyncClient, ASGITransport
 from datetime import datetime, timezone
-from db.database import SCHEMA_SQL, insert_snapshot, insert_alert
+from db.database import SCHEMA_SQL, insert_snapshot, insert_alert, upsert_registry_entry
 from models import SubnetSnapshot, AlertRecord
 
 
@@ -57,3 +57,34 @@ async def test_api_alerts_returns_json(app, db):
         resp = await client.get("/api/alerts")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
+
+
+async def test_dashboard_shows_registry_name(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=1, polled_at=now,
+                                              composite_score=80.0,
+                                              alpha_mcap_tao=5000.0))
+    await upsert_registry_entry(db, 1, "Apex", None, None, None)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/")
+    assert resp.status_code == 200
+    assert "Apex" in resp.text
+
+
+async def test_dashboard_row_links_to_subnet_page(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=7, polled_at=now,
+                                              composite_score=60.0))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/")
+    assert "/subnet/7" in resp.text
+
+
+async def test_dashboard_shows_mcap_usd(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=1, polled_at=now,
+                                              composite_score=75.0,
+                                              alpha_mcap_usd=2_100_000.0))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/")
+    assert "$2.1M" in resp.text
