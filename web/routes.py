@@ -106,6 +106,17 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
                 else:
                     momentum_why = "stable"
 
+        hype_why = "no social data"
+        hype_parts = []
+        if snap["x_followers"] is not None:
+            hype_parts.append(f"{snap['x_followers']:,} followers")
+        if snap["x_last_tweet"]:
+            tweet_age = (datetime.now(timezone.utc) -
+                         datetime.fromisoformat(snap["x_last_tweet"]).replace(tzinfo=timezone.utc)).days
+            hype_parts.append(f"tweeted {tweet_age}d ago")
+        if hype_parts:
+            hype_why = " · ".join(hype_parts)
+
         now_utc = datetime.now(timezone.utc)
         gh_push_age_days = None
         if snap["gh_last_push"]:
@@ -125,6 +136,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             "yield_why": yield_why,
             "quality_why": quality_why,
             "momentum_why": momentum_why,
+            "hype_why": hype_why,
             "gh_push_age_days": gh_push_age_days,
             "x_tweet_age_days": x_tweet_age_days,
         })

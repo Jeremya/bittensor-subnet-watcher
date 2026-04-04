@@ -34,6 +34,7 @@ class SubnetSnapshot:
     yield_score: Optional[float] = None
     quality_score: Optional[float] = None
     momentum_score: Optional[float] = None
+    hype_score: Optional[float] = None
     composite_score: Optional[float] = None
 
 

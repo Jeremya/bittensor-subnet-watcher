@@ -110,6 +110,39 @@ def compute_momentum_score(snap: SubnetSnapshot,
     return round(max(0.0, min(100.0, score)), 2)
 
 
+def compute_hype_score(snap: SubnetSnapshot,
+                        max_followers: int = 10000) -> Optional[float]:
+    """
+    Hype score (0–100) based on X/social presence:
+      x_followers normalized to 0–60pts (relative to max across subnets)
+      tweet recency: <3d = 40pts, <7d = 30pts, <14d = 20pts, <30d = 10pts, else 0
+    Returns None if no social data at all.
+    """
+    if snap.x_followers is None and snap.x_last_tweet is None:
+        return None
+
+    score = 0.0
+    now = datetime.now(timezone.utc)
+
+    # Followers component (0–60 pts)
+    if snap.x_followers is not None and max_followers > 0:
+        score += min(snap.x_followers / max_followers, 1.0) * 60.0
+
+    # Tweet recency component (0–40 pts)
+    if snap.x_last_tweet is not None:
+        age_days = (now - snap.x_last_tweet).days
+        if age_days < 3:
+            score += 40.0
+        elif age_days < 7:
+            score += 30.0
+        elif age_days < 14:
+            score += 20.0
+        elif age_days < 30:
+            score += 10.0
+
+    return round(score, 2)
+
+
 def score_snapshots(snapshots: list[SubnetSnapshot],
                     history_by_netuid: dict[int, list[SubnetSnapshot]]) -> None:
     """
@@ -123,11 +156,16 @@ def score_snapshots(snapshots: list[SubnetSnapshot],
     neurons = [s.n_neurons for s in snapshots if s.n_neurons is not None]
     max_neurons = max(neurons) if neurons else 512
 
+    # Compute max followers for hype normalization
+    followers = [s.x_followers for s in snapshots if s.x_followers is not None]
+    max_followers = max(followers) if followers else 10000
+
     for snap in snapshots:
         snap.quality_score = compute_quality_score(snap, max_neurons=max_neurons)
         snap.momentum_score = compute_momentum_score(
             snap, history=history_by_netuid.get(snap.netuid, [])
         )
+        snap.hype_score = compute_hype_score(snap, max_followers=max_followers)
 
         # Composite: weighted sum of available sub-scores
         parts = []
@@ -137,6 +175,8 @@ def score_snapshots(snapshots: list[SubnetSnapshot],
             parts.append((snap.quality_score, config.QUALITY_WEIGHT))
         if snap.momentum_score is not None:
             parts.append((snap.momentum_score, config.MOMENTUM_WEIGHT))
+        if snap.hype_score is not None:
+            parts.append((snap.hype_score, config.HYPE_WEIGHT))
 
         if parts:
             total_weight = sum(w for _, w in parts)

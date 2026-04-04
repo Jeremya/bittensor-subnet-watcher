@@ -18,9 +18,11 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 # ── Scoring weights ───────────────────────────────────────────────────────────
 # Yield is the primary dTAO alpha signal (emission rank ÷ mcap rank arbitrage).
 # Quality gates out dead subnets. Momentum confirms entry timing.
-YIELD_WEIGHT: float = 0.40
-QUALITY_WEIGHT: float = 0.30
-MOMENTUM_WEIGHT: float = 0.30
+# Hype captures social traction (X followers + tweet recency).
+YIELD_WEIGHT: float = 0.35
+QUALITY_WEIGHT: float = 0.25
+MOMENTUM_WEIGHT: float = 0.25
+HYPE_WEIGHT: float = 0.15
 
 # ── Alert thresholds ─────────────────────────────────────────────────────────
 EMISSION_DIVERGENCE_RATIO: float = 1.5      # mcap_rank / emission_rank > 1.5

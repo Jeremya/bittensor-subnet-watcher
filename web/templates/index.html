@@ -26,6 +26,10 @@
     tr.clickable:hover .sn-name { color: #00ffcc; }
     .sn-name { color: #00d4aa; }
     .sn-id { color: #444; margin-left: 4px; font-size: 0.9em; }
+    .sn-links { margin-left: 6px; }
+    .sn-links a { color: #333; font-size: 0.75em; text-decoration: none;
+                  margin-left: 4px; }
+    .sn-links a:hover { color: #00d4aa; }
     .score-high { color: #00c853; }
     .score-med  { color: #ffd600; }
     .score-low  { color: #ff5252; }
@@ -81,6 +85,10 @@
           <td>
             <span class="sn-name">{{ row.name or ("SN" ~ row.netuid) }}</span>
             <span class="sn-id">SN{{ row.netuid }}</span>
+            <span class="sn-links" onclick="event.stopPropagation()">
+              {%- if row.github_url %}<a href="{{ row.github_url }}" target="_blank" rel="noopener">GH↗</a>{% endif -%}
+              <a href="https://tao.app/subnet/{{ row.netuid }}" target="_blank" rel="noopener">tao↗</a>
+            </span>
           </td>
           <td class="{{ cls }}">{{ "%.1f"|format(score) if score else "—" }}</td>
           <td>{{ ("#" ~ row.emission_rank) if row.emission_rank else "—" }}</td>

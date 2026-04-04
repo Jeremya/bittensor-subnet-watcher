@@ -25,5 +25,6 @@ def test_validate_config_passes_with_both_vars(monkeypatch):
 
 def test_scoring_weights_sum_to_one():
     import config
-    total = config.YIELD_WEIGHT + config.QUALITY_WEIGHT + config.MOMENTUM_WEIGHT
+    total = (config.YIELD_WEIGHT + config.QUALITY_WEIGHT
+             + config.MOMENTUM_WEIGHT + config.HYPE_WEIGHT)
     assert abs(total - 1.0) < 1e-9

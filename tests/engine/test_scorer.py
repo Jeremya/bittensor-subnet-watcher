@@ -1,10 +1,12 @@
 import pytest
 from datetime import datetime, timezone, timedelta
 from models import SubnetSnapshot
+import config
 from engine.scorer import (
     compute_yield_scores,
     compute_quality_score,
     compute_momentum_score,
+    compute_hype_score,
     score_snapshots,
 )
 
@@ -112,7 +114,7 @@ def test_score_snapshots_sets_composite():
 
 
 def test_score_snapshots_weight_renormalization():
-    """When momentum_score is None, composite uses renormalized yield+quality weights."""
+    """When momentum and hype scores are None, composite uses renormalized yield+quality weights."""
     snap = make_snap(
         1,
         daily_emission_tao=50.0,
@@ -120,11 +122,47 @@ def test_score_snapshots_weight_renormalization():
         tao_usd_price=300.0,
         n_neurons=200,
         gh_last_push=datetime.now(timezone.utc) - timedelta(days=5),
+        # No social data → hype_score will be None
+        # No history → momentum_score will be None
     )
-    # No history → momentum_score will be None
     score_snapshots([snap], history_by_netuid={})
     assert snap.momentum_score is None
+    assert snap.hype_score is None
     assert snap.yield_score is not None
     assert snap.quality_score is not None
-    expected = (snap.yield_score * 0.40 + snap.quality_score * 0.30) / 0.70
+    w_y, w_q = config.YIELD_WEIGHT, config.QUALITY_WEIGHT
+    expected = (snap.yield_score * w_y + snap.quality_score * w_q) / (w_y + w_q)
     assert snap.composite_score == pytest.approx(expected, rel=0.01)
+
+
+# ── Hype score ────────────────────────────────────────────────────────────────
+
+def test_hype_score_none_without_social_data():
+    snap = make_snap(1)
+    assert compute_hype_score(snap) is None
+
+
+def test_hype_score_followers_only():
+    snap = make_snap(1, x_followers=5000)
+    score = compute_hype_score(snap, max_followers=10000)
+    assert score == pytest.approx(30.0)  # 5000/10000 * 60 = 30
+
+
+def test_hype_score_recent_tweet_bonus():
+    now = datetime.now(timezone.utc)
+    snap = make_snap(1, x_followers=0, x_last_tweet=now - timedelta(days=1))
+    score = compute_hype_score(snap, max_followers=10000)
+    assert score == pytest.approx(40.0)  # 0 followers + <3d tweet = 40
+
+
+def test_hype_score_capped_at_100():
+    now = datetime.now(timezone.utc)
+    snap = make_snap(1, x_followers=10000, x_last_tweet=now - timedelta(days=1))
+    score = compute_hype_score(snap, max_followers=10000)
+    assert score == pytest.approx(100.0)  # 60 + 40 = 100
+
+
+def test_hype_score_stale_tweet_no_bonus():
+    snap = make_snap(1, x_followers=1000, x_last_tweet=datetime.now(timezone.utc) - timedelta(days=60))
+    score = compute_hype_score(snap, max_followers=10000)
+    assert score == pytest.approx(6.0)   # 1000/10000 * 60 = 6, tweet >30d = 0

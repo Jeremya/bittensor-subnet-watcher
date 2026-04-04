@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     yield_score        REAL,
     quality_score      REAL,
     momentum_score     REAL,
+    hype_score         REAL,
     composite_score    REAL
 );
 
@@ -85,6 +86,13 @@ async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
     conn.row_factory = aiosqlite.Row
     await conn.executescript(SCHEMA_SQL)
     await conn.commit()
+    # Migrate existing DBs: add columns introduced after initial schema
+    cursor = await conn.execute("PRAGMA table_info(snapshots)")
+    existing_cols = {row[1] for row in await cursor.fetchall()}
+    for col, definition in [("hype_score", "REAL")]:
+        if col not in existing_cols:
+            await conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {definition}")
+    await conn.commit()
     return conn
 
 
@@ -96,8 +104,8 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
             n_neurons, reg_cost_tao, owner_coldkey,
             gh_last_push, gh_stars, gh_forks, gh_open_issues,
             x_last_tweet, x_followers,
-            yield_score, quality_score, momentum_score, composite_score
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            yield_score, quality_score, momentum_score, hype_score, composite_score
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         snap.netuid, _dt_to_str(snap.polled_at),
         snap.alpha_price_tao, snap.alpha_mcap_tao, snap.alpha_mcap_usd,
@@ -106,7 +114,8 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
         snap.n_neurons, snap.reg_cost_tao, snap.owner_coldkey,
         _dt_to_str(snap.gh_last_push), snap.gh_stars, snap.gh_forks, snap.gh_open_issues,
         _dt_to_str(snap.x_last_tweet), snap.x_followers,
-        snap.yield_score, snap.quality_score, snap.momentum_score, snap.composite_score,
+        snap.yield_score, snap.quality_score, snap.momentum_score, snap.hype_score,
+        snap.composite_score,
     ))
     await db.commit()
 
