@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     tao_usd_price      REAL,
     daily_emission_tao REAL,
     emission_rank      INTEGER,
+    net_tao_flow_tao   REAL,
     n_neurons          INTEGER,
     reg_cost_tao       REAL,
     owner_coldkey      TEXT,
@@ -89,7 +90,7 @@ async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
     # Migrate existing DBs: add columns introduced after initial schema
     cursor = await conn.execute("PRAGMA table_info(snapshots)")
     existing_cols = {row[1] for row in await cursor.fetchall()}
-    for col, definition in [("hype_score", "REAL")]:
+    for col, definition in [("hype_score", "REAL"), ("net_tao_flow_tao", "REAL")]:
         if col not in existing_cols:
             await conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {definition}")
     await conn.commit()
@@ -101,16 +102,17 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
         INSERT INTO snapshots (
             netuid, polled_at, alpha_price_tao, alpha_mcap_tao, alpha_mcap_usd,
             volume_24h_alpha, tao_usd_price, daily_emission_tao, emission_rank,
-            n_neurons, reg_cost_tao, owner_coldkey,
+            net_tao_flow_tao, n_neurons, reg_cost_tao, owner_coldkey,
             gh_last_push, gh_stars, gh_forks, gh_open_issues,
             x_last_tweet, x_followers,
             yield_score, quality_score, momentum_score, hype_score, composite_score
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         snap.netuid, _dt_to_str(snap.polled_at),
         snap.alpha_price_tao, snap.alpha_mcap_tao, snap.alpha_mcap_usd,
         snap.volume_24h_alpha, snap.tao_usd_price,
         snap.daily_emission_tao, snap.emission_rank,
+        snap.net_tao_flow_tao,
         snap.n_neurons, snap.reg_cost_tao, snap.owner_coldkey,
         _dt_to_str(snap.gh_last_push), snap.gh_stars, snap.gh_forks, snap.gh_open_issues,
         _dt_to_str(snap.x_last_tweet), snap.x_followers,

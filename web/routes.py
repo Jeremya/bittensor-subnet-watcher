@@ -98,18 +98,26 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             oldest = history[-1]
             polls = len(history) - 1
             parts = []
-            # Primary: TAO inflow direction (leading indicator)
-            tao_now = snap["alpha_mcap_tao"]
-            tao_old = oldest["alpha_mcap_tao"]
-            if tao_now is not None and tao_old and tao_old > 0:
-                flow_pct = (tao_now - tao_old) / tao_old * 100
-                if flow_pct > 1:
-                    parts.append(f"+{flow_pct:.0f}% tao in {polls} polls")
-                elif flow_pct < -1:
-                    parts.append(f"{flow_pct:.0f}% tao in {polls} polls")
-                else:
-                    parts.append("tao stable")
-            # Secondary: emission rank change (lagged)
+            # Primary: sum of emission-adjusted net TAO flows (direct staking signal)
+            net_flows = [h["net_tao_flow_tao"] for h in history[:-1]
+                         if h["net_tao_flow_tao"] is not None]
+            if net_flows:
+                total = sum(net_flows)
+                sign = "+" if total >= 0 else ""
+                parts.append(f"{sign}{total:.1f} τ net flow ({polls} polls)")
+            else:
+                # Fallback: crude tao_in delta when flow field not yet populated
+                tao_now = snap["alpha_mcap_tao"]
+                tao_old = oldest["alpha_mcap_tao"]
+                if tao_now is not None and tao_old and tao_old > 0:
+                    flow_pct = (tao_now - tao_old) / tao_old * 100
+                    if flow_pct > 1:
+                        parts.append(f"+{flow_pct:.0f}% tao in {polls} polls")
+                    elif flow_pct < -1:
+                        parts.append(f"{flow_pct:.0f}% tao in {polls} polls")
+                    else:
+                        parts.append("tao stable")
+            # Secondary: emission rank change (lagged confirmation)
             oldest_rank = oldest["emission_rank"]
             if oldest_rank is not None and em_rank is not None:
                 delta = oldest_rank - em_rank

@@ -83,7 +83,21 @@ async def poll_cycle() -> None:
             snap.gh_forks = prev["gh_forks"]
             snap.gh_open_issues = prev["gh_open_issues"]
 
-    # 3. Score
+    # 3a. Compute emission-adjusted net TAO flow for this poll interval.
+    #     net_tao_flow = Δ(tao_in) − emission_accrual
+    #     This isolates pure net staking inflows/outflows from emission padding.
+    for snap in chain_snapshots:
+        prev = prev_by_netuid.get(snap.netuid)
+        if (prev and prev["alpha_mcap_tao"] is not None
+                and snap.alpha_mcap_tao is not None):
+            prev_time = datetime.fromisoformat(prev["polled_at"]).replace(tzinfo=timezone.utc)
+            elapsed_days = (now - prev_time).total_seconds() / 86400
+            emission_accrual = (snap.daily_emission_tao or 0.0) * elapsed_days
+            snap.net_tao_flow_tao = (
+                snap.alpha_mcap_tao - prev["alpha_mcap_tao"] - emission_accrual
+            )
+
+    # 3b. Score
     history_by_netuid: dict[int, list[SubnetSnapshot]] = {}
     for snap in chain_snapshots:
         rows = await get_snapshots_for_netuid(_db, snap.netuid, limit=50)
@@ -93,6 +107,7 @@ async def poll_cycle() -> None:
                 polled_at=datetime.fromisoformat(r["polled_at"]),
                 alpha_mcap_tao=r["alpha_mcap_tao"],
                 emission_rank=r["emission_rank"],
+                net_tao_flow_tao=r["net_tao_flow_tao"],
             )
             for r in rows
         ]

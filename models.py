@@ -10,12 +10,14 @@ class SubnetSnapshot:
 
     # Chain/price data (ChainCollector, every 15 min)
     alpha_price_tao: Optional[float] = None    # price.tao
-    alpha_mcap_tao: Optional[float] = None     # tao_in.tao (TAO in pool)
+    alpha_mcap_tao: Optional[float] = None     # tao_in.tao (TAO in pool, cumulative reserve)
     alpha_mcap_usd: Optional[float] = None     # tao_in.tao * tao_usd
     volume_24h_alpha: Optional[float] = None   # subnet_volume.tao
     tao_usd_price: Optional[float] = None      # from CoinGecko
     daily_emission_tao: Optional[float] = None  # tao_in_emission.tao * 7200
     emission_rank: Optional[int] = None        # rank by daily_emission_tao (1 = highest)
+    net_tao_flow_tao: Optional[float] = None   # Δ(tao_in) − emission_accrual since prev poll
+                                               # = pure net staking inflows (positive) or outflows (negative)
     n_neurons: Optional[int] = None            # SubnetInfo.subnetwork_n
     reg_cost_tao: Optional[float] = None       # SubnetInfo.burn.tao
     owner_coldkey: Optional[str] = None

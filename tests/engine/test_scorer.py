@@ -95,7 +95,8 @@ def test_momentum_score_none_without_history():
     assert score is None
 
 
-def test_momentum_score_with_history():
+def test_momentum_score_with_history_fallback():
+    """Uses crude tao_in delta when net_tao_flow_tao not in history (old rows)."""
     now = datetime.now(timezone.utc)
     current = make_snap(1, alpha_mcap_tao=1200.0, emission_rank=3)
     old = make_snap(1, alpha_mcap_tao=1000.0, emission_rank=8)
@@ -103,6 +104,29 @@ def test_momentum_score_with_history():
     score = compute_momentum_score(current, history=[old])
     assert score is not None
     assert 0 <= score <= 100
+
+
+def test_momentum_score_uses_net_flow_when_available():
+    """When net_tao_flow_tao is populated, it drives the primary signal."""
+    now = datetime.now(timezone.utc)
+    current = make_snap(1, alpha_mcap_tao=1000.0, emission_rank=5)
+    # Two recent history snapshots with emission-adjusted flow data
+    h1 = make_snap(1, alpha_mcap_tao=980.0, emission_rank=6, net_tao_flow_tao=50.0)
+    h1.polled_at = now - timedelta(hours=1)
+    h2 = make_snap(1, alpha_mcap_tao=950.0, emission_rank=6, net_tao_flow_tao=30.0)
+    h2.polled_at = now - timedelta(hours=2)
+    score_inflow = compute_momentum_score(current, history=[h1, h2])
+
+    # Negative flow should produce lower score
+    h1_out = make_snap(1, alpha_mcap_tao=980.0, emission_rank=6, net_tao_flow_tao=-50.0)
+    h1_out.polled_at = now - timedelta(hours=1)
+    h2_out = make_snap(1, alpha_mcap_tao=950.0, emission_rank=6, net_tao_flow_tao=-30.0)
+    h2_out.polled_at = now - timedelta(hours=2)
+    score_outflow = compute_momentum_score(current, history=[h1_out, h2_out])
+
+    assert score_inflow is not None
+    assert score_outflow is not None
+    assert score_inflow > score_outflow
 
 
 # ── score_snapshots ──────────────────────────────────────────────────────────

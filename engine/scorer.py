@@ -114,13 +114,21 @@ def compute_momentum_score(snap: SubnetSnapshot,
 
     score = 50.0  # neutral baseline
 
-    # Primary: TAO inflow change (+/- 35 pts)
-    # alpha_mcap_tao = tao_in (TAO staked into the subnet pool).
-    # Its percentage change is the net flow direction — the actual driver of
-    # future emission share. This is the leading indicator.
-    if snap.alpha_mcap_tao and ref.alpha_mcap_tao and ref.alpha_mcap_tao > 0:
+    # Primary: cumulative net TAO staking flow over the observation window (+/- 35 pts)
+    # net_tao_flow_tao is stored per-poll as Δ(tao_in) − emission_accrual,
+    # so summing it gives total pure staking inflows/outflows with emissions stripped out.
+    # Normalised by current pool size for scale-invariant comparison across subnets.
+    net_flows = [h.net_tao_flow_tao for h in history
+                 if h.net_tao_flow_tao is not None and h.polled_at >= week_ago]
+    if net_flows and snap.alpha_mcap_tao and snap.alpha_mcap_tao > 0:
+        total_net_flow = sum(net_flows)
+        flow_rate = total_net_flow / snap.alpha_mcap_tao
+        # +35 pts for net inflow = 50% of pool over window, -35 for -50%
+        score += max(-35.0, min(35.0, flow_rate * 70.0))
+    elif snap.alpha_mcap_tao and ref.alpha_mcap_tao and ref.alpha_mcap_tao > 0:
+        # Fallback: crude reserve delta (mixes emission accrual + staking flows).
+        # Used for old snapshots before net_tao_flow_tao was collected.
         flow_change = (snap.alpha_mcap_tao - ref.alpha_mcap_tao) / ref.alpha_mcap_tao
-        # +35 pts for +50% inflow growth, -35 pts for -50% outflow (capped)
         score += max(-35.0, min(35.0, flow_change * 70.0))
 
     # Secondary: emission rank change (+/- 15 pts)
