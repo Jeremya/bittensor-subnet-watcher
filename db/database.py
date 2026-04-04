@@ -152,6 +152,8 @@ async def get_latest_snapshots_with_registry(db: aiosqlite.Connection) -> list[a
 
 async def get_emission_rank_24h_ago(db: aiosqlite.Connection) -> dict[int, Optional[int]]:
     """Return {netuid: emission_rank} from the most recent snapshot ≥24h old per netuid."""
+    # datetime() wrapping required: Python isoformat() produces 'T' separator + '+00:00'
+    # which compares lexicographically greater than SQLite's 'YYYY-MM-DD HH:MM:SS' format.
     cursor = await db.execute("""
         SELECT netuid, emission_rank
         FROM snapshots s1
