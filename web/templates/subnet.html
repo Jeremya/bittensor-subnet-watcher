@@ -1,2 +1,309 @@
 <!DOCTYPE html>
-<html><body><p>Subnet {{ snap.netuid }} — detail page coming soon</p></body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ snap.name or ("SN" ~ snap.netuid) }} — TAO Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; font-size: 13px; }
+    .header { background: #1a1a2e; padding: 10px 16px; display: flex; gap: 16px; align-items: center; border-bottom: 1px solid #333; }
+    .header a { color: #555; text-decoration: none; font-size: 0.8rem; }
+    .header a:hover { color: #00d4aa; }
+    .header h1 { font-size: 1rem; color: #00d4aa; }
+    .header .sub { color: #555; font-size: 0.8rem; }
+    .header .links { margin-left: auto; display: flex; gap: 12px; font-size: 0.78rem; }
+    .header .links a { color: #555; text-decoration: none; }
+    .header .links a:hover { color: #00d4aa; }
+    .page { max-width: 900px; margin: 0 auto; padding: 20px 16px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .card { background: #111; border: 1px solid #222; border-radius: 4px; padding: 14px; }
+    .card h3 { font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .score-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+    .score-label { width: 72px; color: #666; font-size: 0.85em; flex-shrink: 0; }
+    .score-bar-wrap { flex: 1; height: 4px; background: #1e1e1e; border-radius: 2px; margin: 0 6px; position: relative; top: -1px; }
+    .score-bar { height: 100%; border-radius: 2px; }
+    .score-val { font-size: 1em; min-width: 32px; text-align: right; }
+    .score-why { color: #555; font-size: 0.78em; margin-left: 4px; }
+    .high { color: #00c853; }
+    .med  { color: #ffd600; }
+    .low  { color: #ff5252; }
+    .composite-row { border-top: 1px solid #222; padding-top: 10px; margin-top: 4px; display: flex; align-items: baseline; gap: 8px; }
+    .composite-label { color: #888; font-size: 0.85em; width: 72px; }
+    .composite-val { font-size: 1.5em; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+    .stat { display: flex; flex-direction: column; padding: 5px 0; border-bottom: 1px solid #161616; }
+    .stat-label { font-size: 0.68rem; color: #444; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { font-size: 0.88rem; color: #ccc; margin-top: 1px; }
+    .stat-value.accent { color: #00d4aa; }
+    .stat-value.dim { color: #555; font-size: 0.78rem; }
+    .full-width { grid-column: 1 / -1; }
+    .alert-item { padding: 8px 10px; border: 1px solid #1e1e1e; margin-bottom: 6px; border-radius: 3px; }
+    .alert-type { color: #00d4aa; font-size: 0.75rem; font-weight: bold; }
+    .alert-desc { color: #777; font-size: 0.72rem; margin-top: 2px; }
+    .alert-time { color: #444; font-size: 0.68rem; margin-top: 2px; }
+    .empty { color: #333; font-style: italic; font-size: 0.8rem; padding: 8px 0; }
+    .gh-row, .social-row { display: flex; gap: 20px; flex-wrap: wrap; }
+    .gh-stat { display: flex; flex-direction: column; }
+    .gh-label { font-size: 0.68rem; color: #444; }
+    .gh-value { font-size: 0.85rem; color: #aaa; }
+    .cold-key { color: #444; font-size: 0.8rem; font-family: monospace; word-break: break-all; }
+  </style>
+</head>
+<body>
+
+{% macro fmt_usd(v) -%}
+{%- if v is none %}—
+{%- elif v >= 1000000 %}${{ "%.1f"|format(v / 1000000) }}M
+{%- elif v >= 1000 %}${{ "%.0f"|format(v / 1000) }}K
+{%- else %}${{ "%.0f"|format(v) }}
+{%- endif %}
+{%- endmacro %}
+
+{% macro score_cls(s) -%}
+{%- if s is not none and s >= 70 %}high
+{%- elif s is not none and s >= 40 %}med
+{%- else %}low
+{%- endif %}
+{%- endmacro %}
+
+<div class="header">
+  <a href="/">← Leaderboard</a>
+  <h1>{{ snap.name or ("SN" ~ snap.netuid) }}</h1>
+  <span class="sub">SN{{ snap.netuid }}{% if score_rank %} · #{{ score_rank }} by score{% endif %}</span>
+  <div class="links">
+    {% if snap.github_url %}<a href="{{ snap.github_url }}" target="_blank" rel="noopener">GitHub ↗</a>{% endif %}
+    {% if snap.website %}<a href="{{ snap.website }}" target="_blank" rel="noopener">Website ↗</a>{% endif %}
+    {% if snap.x_handle %}<a href="https://x.com/{{ snap.x_handle.lstrip('@') }}" target="_blank" rel="noopener">@{{ snap.x_handle.lstrip('@') }} ↗</a>{% endif %}
+  </div>
+</div>
+
+<div class="page">
+  <div class="grid">
+
+    <!-- Card 1: Score Breakdown -->
+    <div class="card">
+      <h3>Score Breakdown</h3>
+
+      {# Yield score row #}
+      {% set y = snap.yield_score %}
+      {% set y_cls = score_cls(y) %}
+      <div class="score-row">
+        <span class="score-label">Yield</span>
+        {% if y is not none %}
+        <div class="score-bar-wrap">
+          <div class="score-bar {{ y_cls }}" style="width:{{ [y|int, 100]|min }}%; background:{% if y >= 70 %}#00c853{% elif y >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
+        </div>
+        <span class="score-val {{ y_cls }}">{{ "%.1f"|format(y) }}</span>
+        {% else %}
+        <div class="score-bar-wrap"></div>
+        <span class="score-val" style="color:#555">—</span>
+        {% endif %}
+        <span class="score-why">{{ yield_why }}</span>
+      </div>
+
+      {# Quality score row #}
+      {% set q = snap.quality_score %}
+      {% set q_cls = score_cls(q) %}
+      <div class="score-row">
+        <span class="score-label">Quality</span>
+        {% if q is not none %}
+        <div class="score-bar-wrap">
+          <div class="score-bar {{ q_cls }}" style="width:{{ [q|int, 100]|min }}%; background:{% if q >= 70 %}#00c853{% elif q >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
+        </div>
+        <span class="score-val {{ q_cls }}">{{ "%.1f"|format(q) }}</span>
+        {% else %}
+        <div class="score-bar-wrap"></div>
+        <span class="score-val" style="color:#555">—</span>
+        {% endif %}
+        <span class="score-why">{{ quality_why }}</span>
+      </div>
+
+      {# Momentum score row #}
+      {% set m = snap.momentum_score %}
+      {% set m_cls = score_cls(m) %}
+      <div class="score-row">
+        <span class="score-label">Momentum</span>
+        {% if m is not none %}
+        <div class="score-bar-wrap">
+          <div class="score-bar {{ m_cls }}" style="width:{{ [m|int, 100]|min }}%; background:{% if m >= 70 %}#00c853{% elif m >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
+        </div>
+        <span class="score-val {{ m_cls }}">{{ "%.1f"|format(m) }}</span>
+        {% else %}
+        <div class="score-bar-wrap"></div>
+        <span class="score-val" style="color:#555">—</span>
+        {% endif %}
+        <span class="score-why">{{ momentum_why }}</span>
+      </div>
+
+      {# Composite #}
+      {% set c = snap.composite_score %}
+      {% set c_cls = score_cls(c) %}
+      <div class="composite-row">
+        <span class="composite-label">Composite</span>
+        {% if c is not none %}
+        <span class="composite-val {{ c_cls }}">{{ "%.1f"|format(c) }}</span>
+        {% else %}
+        <span class="composite-val" style="color:#555">—</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Card 2: Chain Stats -->
+    <div class="card">
+      <h3>Chain Stats</h3>
+      <div class="stat-grid">
+
+        <div class="stat">
+          <span class="stat-label">MCap</span>
+          {% if snap.alpha_mcap_usd is not none %}
+          <span class="stat-value accent">{{ fmt_usd(snap.alpha_mcap_usd) }}</span>
+          {% if snap.alpha_mcap_tao is not none %}
+          <span class="stat-value dim">{{ "%.0f"|format(snap.alpha_mcap_tao) }} τ</span>
+          {% endif %}
+          {% elif snap.alpha_mcap_tao is not none %}
+          <span class="stat-value accent">{{ "%.0f"|format(snap.alpha_mcap_tao) }} τ</span>
+          {% else %}
+          <span class="stat-value" style="color:#555">—</span>
+          {% endif %}
+        </div>
+
+        <div class="stat">
+          <span class="stat-label">Daily Emission</span>
+          {% if snap.daily_emission_tao is not none %}
+          <span class="stat-value">{{ "%.0f"|format(snap.daily_emission_tao) }} τ / day</span>
+          {% if snap.emission_rank is not none %}
+          <span class="stat-value dim">Rank #{{ snap.emission_rank }} of {{ total_subnets }}</span>
+          {% endif %}
+          {% else %}
+          <span class="stat-value" style="color:#555">—</span>
+          {% endif %}
+        </div>
+
+        <div class="stat">
+          <span class="stat-label">Alpha Price</span>
+          {% if snap.alpha_price_tao is not none %}
+          <span class="stat-value">{{ snap.alpha_price_tao }} τ</span>
+          {% else %}
+          <span class="stat-value" style="color:#555">—</span>
+          {% endif %}
+        </div>
+
+        <div class="stat">
+          <span class="stat-label">24h Volume</span>
+          {% if snap.volume_24h_alpha is not none %}
+          <span class="stat-value">{{ "%.0f"|format(snap.volume_24h_alpha) }} α</span>
+          {% else %}
+          <span class="stat-value" style="color:#555">—</span>
+          {% endif %}
+        </div>
+
+        <div class="stat">
+          <span class="stat-label">Neurons</span>
+          {% if snap.n_neurons is not none %}
+          <span class="stat-value">{{ snap.n_neurons }} active</span>
+          {% else %}
+          <span class="stat-value" style="color:#555">—</span>
+          {% endif %}
+        </div>
+
+        <div class="stat">
+          <span class="stat-label">Reg Cost</span>
+          {% if snap.reg_cost_tao is not none %}
+          <span class="stat-value">{{ snap.reg_cost_tao }} τ</span>
+          {% else %}
+          <span class="stat-value" style="color:#555">—</span>
+          {% endif %}
+        </div>
+
+        {% if snap.owner_coldkey is not none %}
+        <div class="stat full-width">
+          <span class="stat-label">Owner</span>
+          <span class="cold-key">{{ snap.owner_coldkey }}</span>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+
+    <!-- Card 3: GitHub (conditional) -->
+    {% if snap.gh_last_push or snap.gh_stars %}
+    <div class="card">
+      <h3>GitHub</h3>
+      <div class="gh-row">
+        <div class="gh-stat">
+          <span class="gh-label">Stars</span>
+          <span class="gh-value">{{ snap.gh_stars if snap.gh_stars is not none else "—" }}</span>
+        </div>
+        <div class="gh-stat">
+          <span class="gh-label">Forks</span>
+          <span class="gh-value">{{ snap.gh_forks if snap.gh_forks is not none else "—" }}</span>
+        </div>
+        <div class="gh-stat">
+          <span class="gh-label">Open Issues</span>
+          <span class="gh-value">{{ snap.gh_open_issues if snap.gh_open_issues is not none else "—" }}</span>
+        </div>
+        <div class="gh-stat">
+          <span class="gh-label">Last Push</span>
+          {% if gh_push_age_days is not none %}
+          {% if gh_push_age_days <= 7 %}
+          <span class="gh-value high">{{ gh_push_age_days }}d ago</span>
+          {% elif gh_push_age_days <= 30 %}
+          <span class="gh-value med">{{ gh_push_age_days }}d ago</span>
+          {% else %}
+          <span class="gh-value low">{{ gh_push_age_days }}d ago</span>
+          {% endif %}
+          {% else %}
+          <span class="gh-value" style="color:#555">—</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Card 4: Social (X) (conditional) -->
+    {% if snap.x_followers or snap.x_last_tweet %}
+    <div class="card">
+      <h3>Social (X)</h3>
+      <div class="social-row">
+        <div class="gh-stat">
+          <span class="gh-label">Followers</span>
+          <span class="gh-value">{{ "{:,}".format(snap.x_followers) if snap.x_followers is not none else "—" }}</span>
+        </div>
+        <div class="gh-stat">
+          <span class="gh-label">Last Tweet</span>
+          {% if x_tweet_age_days is not none %}
+          {% if x_tweet_age_days <= 3 %}
+          <span class="gh-value high">{{ x_tweet_age_days }}d ago</span>
+          {% elif x_tweet_age_days <= 14 %}
+          <span class="gh-value med">{{ x_tweet_age_days }}d ago</span>
+          {% else %}
+          <span class="gh-value low">{{ x_tweet_age_days }}d ago</span>
+          {% endif %}
+          {% else %}
+          <span class="gh-value" style="color:#555">—</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Full-width: Alert History -->
+    <div class="card full-width">
+      <h3>Alert History · this subnet</h3>
+      {% if alerts %}
+      {% for alert in alerts %}
+      <div class="alert-item">
+        <div class="alert-type">{{ (alert.alert_type or "")|replace("_", " ")|title }}</div>
+        <div class="alert-desc">{{ alert.description }}</div>
+        <div class="alert-time">{{ alert.fired_at }}</div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="empty">No alerts fired for this subnet</p>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
