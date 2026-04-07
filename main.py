@@ -19,11 +19,13 @@ config.validate_config()  # exit(1) if missing required env vars
 from models import SubnetSnapshot
 from db.database import init_db, insert_snapshot, get_latest_snapshots, \
     get_unsent_alerts, mark_alerts_sent, prune_old_snapshots, get_registry, \
-    get_snapshots_for_netuid
+    get_snapshots_for_netuid, get_owner_change_counts, get_reg_cost_7d_ago, \
+    upsert_portfolio_position, delete_gone_positions
 from collectors.chain import ChainCollector, init_subtensor, close_subtensor
 from collectors.github import GitHubCollector
 from collectors.x_scraper import XCollector, close_browser
 from collectors.registry import RegistryCollector
+from collectors.portfolio import PortfolioCollector
 from engine.scorer import score_snapshots
 from engine.alerts import evaluate_alerts
 from bot.telegram import TelegramBot
@@ -62,9 +64,31 @@ async def poll_cycle() -> None:
     # 1. Collect chain data (price, emission, n_neurons, etc.)
     chain_snapshots = await ChainCollector.collect()
 
+    # 1b. Portfolio positions (uses prices from chain_snapshots)
+    if config.WALLET_COLDKEYS:
+        from collectors.chain import _subtensor as _chain_subtensor
+        price_by_netuid = {s.netuid: s.alpha_price_tao for s in chain_snapshots
+                           if s.alpha_price_tao is not None}
+        portfolio = await PortfolioCollector.collect(
+            _chain_subtensor, config.WALLET_COLDKEYS, price_by_netuid
+        )
+        for coldkey, positions in portfolio.items():
+            for netuid, data in positions.items():
+                await upsert_portfolio_position(
+                    _db, coldkey, netuid, data["alpha_amount"], data["tao_value"]
+                )
+            await delete_gone_positions(_db, coldkey, set(positions.keys()))
+
     # 2. Retrieve registry and X data
     registry = await get_registry(_db)
-    x_data = await XCollector.collect(registry)
+    try:
+        x_data = await asyncio.wait_for(XCollector.collect(registry), timeout=300)
+    except asyncio.TimeoutError:
+        logger.warning("[POLL] XCollector timed out after 300s — skipping X data this cycle")
+        x_data = {}
+    except Exception as exc:
+        logger.warning("[POLL] XCollector failed — skipping X data this cycle: %s", exc)
+        x_data = {}
 
     # Merge X data into chain snapshots
     for snap in chain_snapshots:
@@ -78,7 +102,11 @@ async def poll_cycle() -> None:
     for snap in chain_snapshots:
         prev = prev_by_netuid.get(snap.netuid)
         if prev and snap.gh_last_push is None:
-            snap.gh_last_push = prev["gh_last_push"]
+            raw = prev["gh_last_push"]
+            snap.gh_last_push = (
+                datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
+                if raw else None
+            )
             snap.gh_stars = prev["gh_stars"]
             snap.gh_forks = prev["gh_forks"]
             snap.gh_open_issues = prev["gh_open_issues"]
@@ -88,19 +116,20 @@ async def poll_cycle() -> None:
     #     This isolates pure net staking inflows/outflows from emission padding.
     for snap in chain_snapshots:
         prev = prev_by_netuid.get(snap.netuid)
-        if (prev and prev["alpha_mcap_tao"] is not None
-                and snap.alpha_mcap_tao is not None):
+        # Use tao_in_tao (pool reserve) for flow calc — not true mcap.
+        # Fall back to alpha_mcap_tao for rows collected before tao_in_tao was added.
+        prev_tao_in = (prev["tao_in_tao"] if prev and prev["tao_in_tao"] is not None
+                       else (prev["alpha_mcap_tao"] if prev else None))
+        if prev_tao_in is not None and snap.tao_in_tao is not None:
             prev_time = datetime.fromisoformat(prev["polled_at"]).replace(tzinfo=timezone.utc)
-            elapsed_days = (now - prev_time).total_seconds() / 86400
+            elapsed_days = (start - prev_time).total_seconds() / 86400
             emission_accrual = (snap.daily_emission_tao or 0.0) * elapsed_days
-            snap.net_tao_flow_tao = (
-                snap.alpha_mcap_tao - prev["alpha_mcap_tao"] - emission_accrual
-            )
+            snap.net_tao_flow_tao = snap.tao_in_tao - prev_tao_in - emission_accrual
 
     # 3b. Score
     history_by_netuid: dict[int, list[SubnetSnapshot]] = {}
     for snap in chain_snapshots:
-        rows = await get_snapshots_for_netuid(_db, snap.netuid, limit=50)
+        rows = await get_snapshots_for_netuid(_db, snap.netuid, limit=config.MOMENTUM_HISTORY_LIMIT)
         history_by_netuid[snap.netuid] = [
             SubnetSnapshot(
                 netuid=r["netuid"],
@@ -111,7 +140,11 @@ async def poll_cycle() -> None:
             )
             for r in rows
         ]
-    score_snapshots(chain_snapshots, history_by_netuid)
+    owner_changes = await get_owner_change_counts(_db, days=30)
+    reg_cost_7d = await get_reg_cost_7d_ago(_db)
+    score_snapshots(chain_snapshots, history_by_netuid,
+                    owner_changes_by_netuid=owner_changes,
+                    reg_cost_7d_by_netuid=reg_cost_7d)
 
     # 4. Persist snapshots
     for snap in chain_snapshots:
@@ -135,6 +168,9 @@ async def poll_cycle() -> None:
             emission_rank=row["emission_rank"],
             gh_stars=row["gh_stars"],
             gh_forks=row["gh_forks"],
+            owner_coldkey=row["owner_coldkey"],
+            reg_cost_tao=row["reg_cost_tao"],
+            max_allowed_uids=row["max_allowed_uids"],
         )
 
     known_netuids = set(prev_by_netuid.keys())

@@ -11,31 +11,49 @@ TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
 # ── Optional with defaults ───────────────────────────────────────────────────
 GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
 POLL_INTERVAL_MINUTES: int = int(os.getenv("POLL_INTERVAL_MINUTES", "15"))
+# Snapshots needed to cover MOMENTUM_HISTORY_DAYS at the configured poll rate.
+# 10% buffer absorbs missed polls without silently shrinking the window.
+MOMENTUM_HISTORY_DAYS: int = 7
+MOMENTUM_HISTORY_LIMIT: int = int(MOMENTUM_HISTORY_DAYS * 24 * 60 / POLL_INTERVAL_MINUTES * 1.1)
 DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8000"))
 DB_PATH: str = os.getenv("DB_PATH", "./data/monitor.db")
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
 # ── Scoring weights ───────────────────────────────────────────────────────────
 # Yield is the primary dTAO alpha signal (emission rank ÷ mcap rank arbitrage).
-# Quality gates out dead subnets (GitHub recency, neuron fill ratio, liquidity).
+# Health measures protocol-native subnet stability (ownership, reg cost, GitHub, liquidity).
 # Momentum is net TAO inflow direction — the actual emission share driver.
 # Hype (X followers/recency) is intentionally excluded from composite: it is
 # gameable, protocol-external, and displayed as informational on the detail page.
 YIELD_MIN_MCAP_USD: float = 50_000.0  # exclude micro-caps from yield scoring
 YIELD_WEIGHT: float = 0.40
-QUALITY_WEIGHT: float = 0.30
+HEALTH_WEIGHT: float = 0.30
 MOMENTUM_WEIGHT: float = 0.30
 
 # ── Alert thresholds ─────────────────────────────────────────────────────────
+# Project-monitoring alerts
 EMISSION_DIVERGENCE_RATIO: float = 1.5      # mcap_rank / emission_rank > 1.5
 DEAD_GITHUB_DAYS: int = 60                   # no commit in 60 days
-DEAD_GITHUB_MIN_MCAP_USD: float = 500_000.0 # only flag if mcap > $500K
-WHALE_INFLOW_PCT: float = 0.05              # >5% of alpha supply staked in one poll
+DEAD_GITHUB_MIN_MCAP_USD: float = 500_000.0 # only flag dead GitHub if mcap > $500K
 EMISSION_DROP_RANKS: int = 2                # lose >2 emission ranks in 24h
 GITHUB_SPIKE_MULTIPLIER: float = 2.0        # stars or forks double in 24h
 SOCIAL_SILENCE_DAYS: int = 14               # no tweet in 14 days
+# Capital-protection alerts
+WHALE_INFLOW_PCT: float = 0.05              # net TAO inflow > 5% of pool in one poll
+NET_OUTFLOW_ALERT_PCT: float = 0.03         # net TAO outflow > 3% of pool in one poll
+EMISSION_NEAR_ZERO_TAO: float = 5.0         # daily emission < 5 τ/day = near-zero risk
+EMISSION_NEAR_ZERO_MIN_MCAP_USD: float = 100_000.0  # only alert above this mcap
+LIQUIDITY_FLOOR_RATIO: float = 0.001        # < 0.1% daily turnover = effectively illiquid
+LIQUIDITY_MIN_MCAP_USD: float = 200_000.0   # only alert above this mcap
+REG_COST_CHANGE_PCT: float = 0.50           # reg cost moves ±50% = hyperparameter shift
+# Shared
 ALERT_COOLDOWN_HOURS: int = 6               # max 1 alert per subnet per type per 6h
 HEALTH_CHECK_NONE_THRESHOLD: float = 0.50   # warn if >50% subnets have None emission
+
+# ── Bittensor ────────────────────────────────────────────────────────────────
+# ── Portfolio tracking ────────────────────────────────────────────────────────
+WALLET_COLDKEYS: list[str] = [k.strip() for k in os.getenv("WALLET_COLDKEYS", "").split(",") if k.strip()]
+WALLET_LABELS: list[str] = [l.strip() for l in os.getenv("WALLET_LABELS", "").split(",") if l.strip()]
 
 # ── Bittensor ────────────────────────────────────────────────────────────────
 BITTENSOR_NETWORK: str = "finney"

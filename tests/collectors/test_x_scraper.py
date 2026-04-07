@@ -55,3 +55,24 @@ async def test_collect_respects_max_per_cycle():
         with patch("collectors.x_scraper.asyncio.sleep", AsyncMock()):
             results = await XCollector.collect(registry, max_per_cycle=30)
     assert len(results) == 30
+
+
+class RowLike:
+    def __init__(self, values):
+        self._values = values
+
+    def __getitem__(self, key):
+        return self._values[key]
+
+
+async def test_collect_accepts_row_like_registry_values():
+    registry = {
+        1: RowLike({"x_handle": "handle1"}),
+        2: RowLike({"x_handle": None}),
+    }
+    with patch("collectors.x_scraper.XCollector.scrape_handle",
+               AsyncMock(return_value={"x_followers": 100, "x_last_tweet": None})):
+        with patch("collectors.x_scraper.asyncio.sleep", AsyncMock()):
+            results = await XCollector.collect(registry, max_per_cycle=30)
+    assert len(results) == 1
+    assert 1 in results

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="60">
+  <title>Portfolio — TAO Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; }
+    header { background: #1a1a2e; padding: 12px 20px; display: flex;
+             gap: 24px; align-items: center; border-bottom: 1px solid #333; }
+    header h1 { font-size: 1.2rem; color: #00d4aa; }
+    header a { color: #666; font-size: 0.85rem; text-decoration: none; margin-left: auto; }
+    header a:hover { color: #00d4aa; }
+    .content { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+    .wallet-block { margin-bottom: 40px; }
+    .wallet-header { font-size: 0.9rem; color: #888; text-transform: uppercase;
+                     letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #333;
+                     padding-bottom: 6px; }
+    .wallet-header span { color: #444; font-size: 0.75rem; margin-left: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align: left; padding: 6px 10px; color: #666; border-bottom: 1px solid #333; }
+    td { padding: 7px 10px; border-bottom: 1px solid #1a1a1a; }
+    tr.total-row td { border-top: 1px solid #333; border-bottom: none;
+                      color: #aaa; font-weight: bold; }
+    .sn-link { color: #00d4aa; text-decoration: none; }
+    .sn-link:hover { text-decoration: underline; }
+    .pnl-pos { color: #00c853; }
+    .pnl-neg { color: #ff5252; }
+    .pnl-null { color: #555; }
+    .grand-total { margin-top: 32px; padding: 16px; background: #1a1a1a;
+                   border: 1px solid #333; border-radius: 4px; font-size: 0.9rem; }
+    .grand-total .label { color: #666; margin-right: 12px; }
+    .grand-total .value { color: #e0e0e0; margin-right: 24px; }
+    .empty { color: #555; font-style: italic; padding: 40px 0; text-align: center; }
+    .note { color: #555; font-size: 0.75rem; margin-top: 16px; }
+  </style>
+</head>
+<body>
+
+{% macro fmt_tao(v) -%}
+{%- if v is none %}—
+{%- else %}{{ "%.2f"|format(v) }} τ
+{%- endif %}
+{%- endmacro %}
+
+{% macro fmt_usd(v) -%}
+{%- if v is none %}—
+{%- elif v >= 1000000 %}${{ "%.1f"|format(v / 1000000) }}M
+{%- elif v >= 1000 %}${{ "%.0f"|format(v / 1000) }}K
+{%- else %}${{ "%.0f"|format(v) }}
+{%- endif %}
+{%- endmacro %}
+
+{% macro fmt_pnl(v, pct) -%}
+{%- if v is none %}<span class="pnl-null">—</span>
+{%- elif v >= 0 %}<span class="pnl-pos">+{{ "%.2f"|format(v) }} τ (+{{ "%.1f"|format(pct) }}%)</span>
+{%- else %}<span class="pnl-neg">{{ "%.2f"|format(v) }} τ ({{ "%.1f"|format(pct) }}%)</span>
+{%- endif %}
+{%- endmacro %}
+
+<header>
+  <h1>Portfolio</h1>
+  {% if tao_usd_price %}<span style="color:#999; font-size:0.85rem;">TAO = ${{ "%.2f"|format(tao_usd_price) }}</span>{% endif %}
+  <a href="/">← Dashboard</a>
+</header>
+
+<div class="content">
+
+{% if not wallets %}
+  <p class="empty">No portfolio positions found. Add WALLET_COLDKEYS to .env and wait for the next poll.</p>
+{% else %}
+
+{% for wallet in wallets %}
+<div class="wallet-block">
+  <div class="wallet-header">
+    {{ wallet.label }}
+    <span>{{ wallet.coldkey[:12] }}...</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Subnet</th>
+        <th>Alpha</th>
+        <th>TAO Value</th>
+        <th>USD Value</th>
+        <th>P&amp;L</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pos in wallet.positions %}
+      <tr>
+        <td><a class="sn-link" href="/subnet/{{ pos.netuid }}">{{ pos.subnet_label }}</a>
+            <span style="color:#444; font-size:0.85em;"> SN{{ pos.netuid }}</span></td>
+        <td>{{ "%.3f"|format(pos.alpha_amount) }} α</td>
+        <td>{{ fmt_tao(pos.tao_value) }}</td>
+        <td>{{ fmt_usd(pos.usd_value) }}</td>
+        <td>{{ fmt_pnl(pos.pnl_tao, pos.pnl_pct) }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="total-row">
+        <td>Total</td>
+        <td>—</td>
+        <td>{{ fmt_tao(wallet.total_tao) }}</td>
+        <td>{{ fmt_usd(wallet.total_usd) }}</td>
+        <td>{{ fmt_pnl(wallet.total_pnl_tao, wallet.total_pnl_pct) }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+
+<div class="grand-total">
+  <span class="label">Grand Total</span>
+  <span class="value">{{ fmt_tao(grand_total_tao) }}</span>
+  <span class="value">{{ fmt_usd(grand_total_usd) }}</span>
+  <span>{{ fmt_pnl(grand_pnl_tao, grand_pnl_pct) }}</span>
+</div>
+
+<p class="note">P&amp;L baseline = TAO value when position was first detected by this monitor. Refreshes every 60s.</p>
+
+{% endif %}
+
+</div>
+</body>
+</html>

@@ -27,6 +27,7 @@
     .sn-name { color: #00d4aa; }
     .sn-id { color: #444; margin-left: 4px; font-size: 0.9em; }
     .sn-links { margin-left: 6px; }
+    .staked-badge { color: #00c853; margin-left: 5px; font-size: 0.8em; title: "In your portfolio"; }
     .sn-links a { color: #333; font-size: 0.75em; text-decoration: none;
                   margin-left: 4px; }
     .sn-links a:hover { color: #00d4aa; }
@@ -58,6 +59,7 @@
   <h1>TAO Monitor</h1>
   <span>Subnets: {{ subnet_count }}</span>
   <span>Last poll: {{ last_poll or "never" }}</span>
+  <a href="/portfolio" style="margin-left:auto; color:#00d4aa; font-size:0.85rem; text-decoration:none;">Portfolio ↗</a>
 </header>
 <div class="layout">
 
@@ -85,6 +87,7 @@
           <td>
             <span class="sn-name">{{ row.name or ("SN" ~ row.netuid) }}</span>
             <span class="sn-id">SN{{ row.netuid }}</span>
+            {%- if row.staked %}<span class="staked-badge" title="In your portfolio">●</span>{% endif -%}
             <span class="sn-links" onclick="event.stopPropagation()">
               {%- if row.github_url %}<a href="{{ row.github_url }}" target="_blank" rel="noopener">GH↗</a>{% endif -%}
               <a href="https://tao.app/subnet/{{ row.netuid }}" target="_blank" rel="noopener">tao↗</a>

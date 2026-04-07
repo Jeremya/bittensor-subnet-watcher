@@ -12,6 +12,11 @@ from engine.alerts import (
     check_social_silence,
     check_new_entry,
     check_ownership_transfer,
+    check_tao_outflow,
+    check_whale_inflow,
+    check_emission_near_zero,
+    check_liquidity_floor,
+    check_hyperparameter_change,
     evaluate_alerts,
 )
 
@@ -132,6 +137,133 @@ def test_ownership_transfer_no_alert_when_current_none():
     assert check_ownership_transfer(curr, prev) is None
 
 
+# ── Capital-protection checks ─────────────────────────────────────────────────
+
+def test_tao_outflow_fires_on_large_negative_flow():
+    # 4% outflow > 3% threshold
+    snap = make_snap(1, net_tao_flow_tao=-40.0, alpha_mcap_tao=1000.0)
+    result = check_tao_outflow(snap)
+    assert result is not None
+    assert result.alert_type == "tao_outflow"
+    assert result.current_value == pytest.approx(0.04)
+
+
+def test_tao_outflow_does_not_fire_below_threshold():
+    # 2% outflow < 3% threshold
+    snap = make_snap(1, net_tao_flow_tao=-20.0, alpha_mcap_tao=1000.0)
+    assert check_tao_outflow(snap) is None
+
+
+def test_tao_outflow_does_not_fire_on_inflow():
+    snap = make_snap(1, net_tao_flow_tao=50.0, alpha_mcap_tao=1000.0)
+    assert check_tao_outflow(snap) is None
+
+
+def test_tao_outflow_skips_when_data_missing():
+    assert check_tao_outflow(make_snap(1)) is None
+    assert check_tao_outflow(make_snap(1, net_tao_flow_tao=-50.0)) is None
+
+
+def test_whale_inflow_fires_on_large_positive_flow():
+    # 6% inflow > 5% threshold
+    snap = make_snap(1, net_tao_flow_tao=60.0, alpha_mcap_tao=1000.0)
+    result = check_whale_inflow(snap)
+    assert result is not None
+    assert result.alert_type == "whale_inflow"
+    assert result.current_value == pytest.approx(0.06)
+
+
+def test_whale_inflow_does_not_fire_below_threshold():
+    snap = make_snap(1, net_tao_flow_tao=40.0, alpha_mcap_tao=1000.0)
+    assert check_whale_inflow(snap) is None
+
+
+def test_whale_inflow_does_not_fire_on_outflow():
+    snap = make_snap(1, net_tao_flow_tao=-80.0, alpha_mcap_tao=1000.0)
+    assert check_whale_inflow(snap) is None
+
+
+def test_emission_near_zero_fires():
+    snap = make_snap(1, daily_emission_tao=3.0, alpha_mcap_usd=500_000.0)
+    result = check_emission_near_zero(snap)
+    assert result is not None
+    assert result.alert_type == "emission_near_zero"
+    assert result.current_value == pytest.approx(3.0)
+
+
+def test_emission_near_zero_does_not_fire_above_threshold():
+    snap = make_snap(1, daily_emission_tao=10.0, alpha_mcap_usd=500_000.0)
+    assert check_emission_near_zero(snap) is None
+
+
+def test_emission_near_zero_skips_micro_cap():
+    # mcap < EMISSION_NEAR_ZERO_MIN_MCAP_USD ($100K)
+    snap = make_snap(1, daily_emission_tao=1.0, alpha_mcap_usd=50_000.0)
+    assert check_emission_near_zero(snap) is None
+
+
+def test_liquidity_floor_fires_when_illiquid():
+    # volume_tao = 0.5 * 0.1 = 0.05; ratio = 0.05/1000 = 0.005% < 0.1% floor
+    snap = make_snap(1, volume_24h_alpha=0.5, alpha_price_tao=0.1,
+                     alpha_mcap_tao=1000.0, alpha_mcap_usd=500_000.0)
+    result = check_liquidity_floor(snap)
+    assert result is not None
+    assert result.alert_type == "liquidity_floor"
+
+
+def test_liquidity_floor_does_not_fire_above_floor():
+    # volume_tao = 2 * 0.1 = 0.2; ratio = 0.2/1000 = 0.02% -- still illiquid, use bigger volume
+    # volume_tao = 20 * 0.1 = 2.0; ratio = 2/1000 = 0.2% > 0.1% floor
+    snap = make_snap(1, volume_24h_alpha=20.0, alpha_price_tao=0.1,
+                     alpha_mcap_tao=1000.0, alpha_mcap_usd=500_000.0)
+    assert check_liquidity_floor(snap) is None
+
+
+def test_liquidity_floor_skips_micro_cap():
+    snap = make_snap(1, volume_24h_alpha=0.1, alpha_price_tao=0.1,
+                     alpha_mcap_tao=1000.0, alpha_mcap_usd=50_000.0)
+    assert check_liquidity_floor(snap) is None
+
+
+def test_hyperparameter_change_fires_on_reg_cost_spike():
+    prev = make_snap(1, reg_cost_tao=0.10)
+    curr = make_snap(1, reg_cost_tao=0.20)  # +100% > 50% threshold
+    result = check_hyperparameter_change(curr, prev)
+    assert result is not None
+    assert result.alert_type == "hyperparameter_change"
+    assert "↑" in result.description
+
+
+def test_hyperparameter_change_fires_on_reg_cost_drop():
+    prev = make_snap(1, reg_cost_tao=0.10)
+    curr = make_snap(1, reg_cost_tao=0.02)  # -80% > 50% threshold
+    result = check_hyperparameter_change(curr, prev)
+    assert result is not None
+    assert "↓" in result.description
+
+
+def test_hyperparameter_change_does_not_fire_within_tolerance():
+    prev = make_snap(1, reg_cost_tao=0.10)
+    curr = make_snap(1, reg_cost_tao=0.13)  # +30% < 50%
+    assert check_hyperparameter_change(curr, prev) is None
+
+
+def test_hyperparameter_change_fires_on_max_allowed_uids_change():
+    prev = make_snap(1, max_allowed_uids=256)
+    curr = make_snap(1, max_allowed_uids=512)
+    result = check_hyperparameter_change(curr, prev)
+    assert result is not None
+    assert result.alert_type == "hyperparameter_change"
+    assert "256" in result.description
+    assert "512" in result.description
+
+
+def test_hyperparameter_change_no_fire_when_unchanged():
+    prev = make_snap(1, reg_cost_tao=0.10, max_allowed_uids=256)
+    curr = make_snap(1, reg_cost_tao=0.11, max_allowed_uids=256)
+    assert check_hyperparameter_change(curr, prev) is None
+
+
 # ── evaluate_alerts integration ───────────────────────────────────────────────
 
 async def test_evaluate_alerts_respects_cooldown(db):
@@ -174,3 +306,19 @@ async def test_evaluate_alerts_fires_ownership_transfer(db):
     transfer_alerts = [a for a in alerts if a.alert_type == "ownership_transfer"]
     assert len(transfer_alerts) == 1
     assert transfer_alerts[0].netuid == 1
+
+
+class RowLike:
+    def __init__(self, values):
+        self._values = values
+
+    def __getitem__(self, key):
+        return self._values[key]
+
+
+async def test_evaluate_alerts_accepts_row_like_registry_values(db):
+    snap = make_snap(1, emission_rank=3, alpha_mcap_tao=32000.0)
+    registry = {1: RowLike({"name": "Apex"})}
+    alerts = await evaluate_alerts(db, [snap], registry, prev_by_netuid={}, known_netuids=set())
+    assert any(a.alert_type == "new_entry" for a in alerts)
+    assert any(a.subnet_name == "Apex" for a in alerts)

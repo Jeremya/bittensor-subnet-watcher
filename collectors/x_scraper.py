@@ -12,12 +12,26 @@ _playwright = None
 _browser = None
 
 
+def _row_value(row, key: str):
+    """Read a registry value from dict-like rows or sqlite Row objects."""
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row.get(key)
+    try:
+        return row[key]
+    except (KeyError, TypeError, IndexError):
+        return getattr(row, key, None)
+
+
 async def get_browser_page() -> Page:
     """Get or create a headless Chromium page."""
     global _playwright, _browser
     if _browser is None:
-        _playwright = await async_playwright().start()
-        _browser = await _playwright.chromium.launch(headless=True)
+        _playwright = await asyncio.wait_for(async_playwright().start(), timeout=30)
+        _browser = await asyncio.wait_for(
+            _playwright.chromium.launch(headless=True), timeout=30
+        )
     context = await _browser.new_context(
         user_agent=(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -94,11 +108,13 @@ class XCollector:
 
             return {"x_followers": x_followers, "x_last_tweet": x_last_tweet}
 
+        except asyncio.CancelledError:
+            raise
         except PlaywrightTimeout:
-            logger.debug("[COLLECTOR] x_scraper: timeout handle=%s", handle)
+            logger.warning("[COLLECTOR] x_scraper: timeout handle=%s", handle)
             return None
         except Exception as exc:
-            logger.debug("[COLLECTOR] x_scraper: failed handle=%s error=%s", handle, exc)
+            logger.warning("[COLLECTOR] x_scraper: failed handle=%s error=%s", handle, exc)
             return None
         finally:
             if page:
@@ -115,9 +131,11 @@ class XCollector:
         Sequential with 2s delay to avoid IP bans.
         """
         results: dict[int, dict] = {}
-        handles = [(netuid, row["x_handle"])
-                   for netuid, row in registry.items()
-                   if row.get("x_handle")][:max_per_cycle]
+        handles = [
+            (netuid, handle)
+            for netuid, row in registry.items()
+            if (handle := _row_value(row, "x_handle"))
+        ][:max_per_cycle]
 
         for netuid, handle in handles:
             data = await XCollector.scrape_handle(handle)

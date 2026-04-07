@@ -27,6 +27,12 @@
     .high { color: #00c853; }
     .med  { color: #ffd600; }
     .low  { color: #ff5252; }
+    .verdict { font-size: 0.78rem; padding: 6px 8px; border-radius: 3px;
+               margin-bottom: 10px; border-left: 3px solid #333; color: #aaa; }
+    .verdict.entry { border-color: #00c853; color: #00c853; }
+    .verdict.caution { border-color: #ffd600; color: #ffd600; }
+    .verdict.risk  { border-color: #ff5252; color: #ff5252; }
+    .verdict.monitor { border-color: #444; color: #666; }
     .composite-row { border-top: 1px solid #222; padding-top: 10px; margin-top: 4px; display: flex; align-items: baseline; gap: 8px; }
     .composite-label { color: #888; font-size: 0.85em; width: 72px; }
     .composite-val { font-size: 1.5em; }
@@ -84,6 +90,15 @@
     <div class="card">
       <h3>Score Breakdown</h3>
 
+      {# Verdict banner #}
+      {% if verdict is defined and verdict %}
+      {% set v = verdict | lower %}
+      {% set vcls = "entry" if ("entry" in v or "accumulating" in v or "potential" in v)
+                    else ("risk" if ("risk" in v or "fragile" in v or "exit" in v or "avoid" in v or "caution" in v or "overpriced" in v)
+                    else "monitor") %}
+      <div class="verdict {{ vcls }}">{{ verdict }}</div>
+      {% endif %}
+
       {# Yield score row #}
       {% set y = snap.yield_score %}
       {% set y_cls = score_cls(y) %}
@@ -101,11 +116,11 @@
         <span class="score-why">{{ yield_why | default("") }}</span>
       </div>
 
-      {# Quality score row #}
-      {% set q = snap.quality_score %}
+      {# Health score row #}
+      {% set q = snap.health_score %}
       {% set q_cls = score_cls(q) %}
       <div class="score-row">
-        <span class="score-label">Quality</span>
+        <span class="score-label">Health</span>
         {% if q is not none %}
         <div class="score-bar-wrap">
           <div class="score-bar {{ q_cls }}" style="width:{{ [(q or 0)|int, 100]|min }}%; background:{% if q >= 70 %}#00c853{% elif q >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
@@ -115,7 +130,7 @@
         <div class="score-bar-wrap"></div>
         <span class="score-val" style="color:#555">—</span>
         {% endif %}
-        <span class="score-why">{{ quality_why | default("") }}</span>
+        <span class="score-why">{{ health_why | default("") }}</span>
       </div>
 
       {# Momentum score row #}

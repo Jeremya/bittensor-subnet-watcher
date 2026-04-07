@@ -55,58 +55,66 @@ def compute_yield_scores(snapshots: list[SubnetSnapshot]) -> None:
             snap.yield_score = (r - min_r) / (max_r - min_r) * 100.0
 
 
-def compute_quality_score(snap: SubnetSnapshot,
-                           max_neurons: int = 512) -> Optional[float]:
+def compute_health_score(snap: SubnetSnapshot,
+                          owner_changes: int = 1,
+                          prev_reg_cost: Optional[float] = None) -> float:
     """
-    Quality score (0–100) — protocol-native health signals only:
+    Health score (0–100) — protocol-native subnet health signals:
 
       GitHub recency (0–30 pts): team is actively shipping
         <30d = 30pts, <90d = 15pts, else 0
 
-      Neuron fill ratio (0–30 pts): n_neurons / max_allowed_uids
-        Full metagraph = competitive subnet with genuine demand.
-        Falls back to n_neurons / max_neurons if max_allowed_uids unavailable.
+      Ownership stability (0–20 pts): fewer distinct owners = more stable
+        1 distinct owner in past 30d = 20pts, 2 = 5pts, 3+ = 0
 
-      Liquidity depth (0–40 pts): volume_24h_alpha / alpha_mcap_tao
+      Reg cost trend (0–20 pts): rising registration demand = healthy competition
+        rising >10% vs 7d ago = 20pts, stable ±10% = 10pts, falling = 0
+
+      Liquidity depth (0–30 pts): (volume_24h_alpha * alpha_price_tao) / alpha_mcap_tao
         Measures daily turnover of the TAO pool — can an investor actually exit?
-        >5% daily turnover = 40pts, >1% = 25pts, >0.1% = 10pts, else 0
+        >5% daily turnover = 30pts, >1% = 20pts, >0.1% = 8pts, else 0
 
-    Returns None only if all three data sources are absent.
+    Always returns a score since ownership stability is always computable.
     """
-    if (snap.gh_last_push is None
-            and snap.n_neurons is None
-            and snap.volume_24h_alpha is None):
-        return None
-
     score = 0.0
     now = datetime.now(timezone.utc)
 
     # GitHub recency (0–30 pts)
-    if snap.gh_last_push is not None:
+    if snap.gh_last_push is not None and isinstance(snap.gh_last_push, datetime):
         age_days = (now - snap.gh_last_push).days
         if age_days < 30:
             score += 30.0
         elif age_days < 90:
             score += 15.0
 
-    # Neuron fill ratio (0–30 pts)
-    if snap.n_neurons is not None:
-        if snap.max_allowed_uids and snap.max_allowed_uids > 0:
-            fill = min(snap.n_neurons / snap.max_allowed_uids, 1.0)
-        else:
-            fill = min(snap.n_neurons / max_neurons, 1.0)
-        score += fill * 30.0
+    # Ownership stability (0–20 pts)
+    if owner_changes <= 1:
+        score += 20.0
+    elif owner_changes == 2:
+        score += 5.0
+    # 3+ owners = 0 pts
 
-    # Liquidity depth (0–40 pts)
-    if (snap.volume_24h_alpha is not None
-            and snap.alpha_mcap_tao and snap.alpha_mcap_tao > 0):
-        ratio = snap.volume_24h_alpha / snap.alpha_mcap_tao
-        if ratio > 0.05:
-            score += 40.0
-        elif ratio > 0.01:
-            score += 25.0
-        elif ratio > 0.001:
+    # Reg cost trend (0–20 pts)
+    if (snap.reg_cost_tao is not None
+            and prev_reg_cost is not None and prev_reg_cost > 0):
+        pct_change = (snap.reg_cost_tao - prev_reg_cost) / prev_reg_cost
+        if pct_change > 0.10:
+            score += 20.0
+        elif pct_change >= -0.10:
             score += 10.0
+        # falling below -10% = 0 pts
+
+    # Liquidity depth (0–30 pts): daily volume (converted to TAO) / true market cap
+    if (snap.volume_24h_alpha is not None
+            and snap.alpha_price_tao is not None
+            and snap.alpha_mcap_tao and snap.alpha_mcap_tao > 0):
+        ratio = (snap.volume_24h_alpha * snap.alpha_price_tao) / snap.alpha_mcap_tao
+        if ratio > 0.05:
+            score += 30.0
+        elif ratio > 0.01:
+            score += 20.0
+        elif ratio > 0.001:
+            score += 8.0
 
     return round(score, 2)
 
@@ -202,24 +210,29 @@ def compute_hype_score(snap: SubnetSnapshot,
 
 
 def score_snapshots(snapshots: list[SubnetSnapshot],
-                    history_by_netuid: dict[int, list[SubnetSnapshot]]) -> None:
+                    history_by_netuid: dict[int, list[SubnetSnapshot]],
+                    owner_changes_by_netuid: Optional[dict[int, int]] = None,
+                    reg_cost_7d_by_netuid: Optional[dict[int, Optional[float]]] = None,
+                    ) -> None:
     """
     Compute and set all scores on snapshots in-place.
     history_by_netuid: {netuid: [older_snapshots]} for momentum calculation.
+    owner_changes_by_netuid: {netuid: distinct_owner_count} over past 30 days.
+    reg_cost_7d_by_netuid: {netuid: reg_cost_tao} from ~7 days ago.
     """
     # Compute yield scores (requires cross-subnet normalization, done in batch)
     compute_yield_scores(snapshots)
-
-    # Compute max neurons for quality normalization
-    neurons = [s.n_neurons for s in snapshots if s.n_neurons is not None]
-    max_neurons = max(neurons) if neurons else 512
 
     # Compute max followers for hype normalization
     followers = [s.x_followers for s in snapshots if s.x_followers is not None]
     max_followers = max(followers) if followers else 10000
 
     for snap in snapshots:
-        snap.quality_score = compute_quality_score(snap, max_neurons=max_neurons)
+        owner_changes = (owner_changes_by_netuid or {}).get(snap.netuid, 1)
+        prev_reg_cost = (reg_cost_7d_by_netuid or {}).get(snap.netuid)
+        snap.health_score = compute_health_score(
+            snap, owner_changes=owner_changes, prev_reg_cost=prev_reg_cost
+        )
         snap.momentum_score = compute_momentum_score(
             snap, history=history_by_netuid.get(snap.netuid, [])
         )
@@ -231,8 +244,8 @@ def score_snapshots(snapshots: list[SubnetSnapshot],
         parts = []
         if snap.yield_score is not None:
             parts.append((snap.yield_score, config.YIELD_WEIGHT))
-        if snap.quality_score is not None:
-            parts.append((snap.quality_score, config.QUALITY_WEIGHT))
+        if snap.health_score is not None:
+            parts.append((snap.health_score, config.HEALTH_WEIGHT))
         if snap.momentum_score is not None:
             parts.append((snap.momentum_score, config.MOMENTUM_WEIGHT))
 

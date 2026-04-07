@@ -4,7 +4,7 @@ from models import SubnetSnapshot
 import config
 from engine.scorer import (
     compute_yield_scores,
-    compute_quality_score,
+    compute_health_score,
     compute_momentum_score,
     compute_hype_score,
     score_snapshots,
@@ -64,54 +64,78 @@ def test_yield_score_none_below_min_mcap():
     assert snaps[0].yield_score is None
 
 
-# ── Quality score ─────────────────────────────────────────────────────────────
+# ── Health score ──────────────────────────────────────────────────────────────
 
-def test_quality_score_recent_github():
+def test_health_score_recent_github():
     now = datetime.now(timezone.utc)
-    snap = make_snap(1, gh_last_push=now - timedelta(days=10), n_neurons=256)
-    score = compute_quality_score(snap, max_neurons=512)
+    snap = make_snap(1, gh_last_push=now - timedelta(days=10))
+    score = compute_health_score(snap)
+    # 30 pts github + 20 pts ownership (default 1) = 50
     assert score is not None
-    assert score >= 30  # recent push gives 30 pts
+    assert score >= 30
 
 
-def test_quality_score_old_github():
+def test_health_score_old_github():
     now = datetime.now(timezone.utc)
-    snap = make_snap(1, gh_last_push=now - timedelta(days=120), n_neurons=256)
-    score = compute_quality_score(snap, max_neurons=512)
+    snap = make_snap(1, gh_last_push=now - timedelta(days=120))
+    score = compute_health_score(snap)
+    # 0 pts github + 20 pts ownership = 20
     assert score is not None
-    assert score < 30  # no points for old push
+    assert score < 30
 
 
-def test_quality_score_none_github_gives_partial():
-    snap = make_snap(1, gh_last_push=None, n_neurons=256)
-    score = compute_quality_score(snap, max_neurons=512)
-    assert score is not None  # still gets fill ratio score
-
-
-def test_quality_score_fill_ratio_uses_max_allowed_uids():
-    snap = make_snap(1, n_neurons=128, max_allowed_uids=256)
-    score = compute_quality_score(snap)
-    # fill = 128/256 = 0.5 → 15 pts; no github, no liquidity
-    assert score == pytest.approx(15.0)
-
-
-def test_quality_score_liquidity_high():
-    snap = make_snap(1, volume_24h_alpha=100.0, alpha_mcap_tao=1000.0)
-    # ratio = 0.10 > 0.05 → 40 pts; no github, no neurons
-    score = compute_quality_score(snap)
-    assert score == pytest.approx(40.0)
-
-
-def test_quality_score_liquidity_medium():
-    snap = make_snap(1, volume_24h_alpha=20.0, alpha_mcap_tao=1000.0)
-    # ratio = 0.02, between 0.01 and 0.05 → 25 pts
-    score = compute_quality_score(snap)
-    assert score == pytest.approx(25.0)
-
-
-def test_quality_score_none_when_all_absent():
+def test_health_score_no_github_gets_ownership_pts():
     snap = make_snap(1)
-    assert compute_quality_score(snap) is None
+    score = compute_health_score(snap)
+    # No github, no liquidity, owner_changes=1 → 20 pts
+    assert score == pytest.approx(20.0)
+
+
+def test_health_score_ownership_stable():
+    snap = make_snap(1)
+    assert compute_health_score(snap, owner_changes=1) == pytest.approx(20.0)
+
+
+def test_health_score_ownership_two_owners():
+    snap = make_snap(1)
+    assert compute_health_score(snap, owner_changes=2) == pytest.approx(5.0)
+
+
+def test_health_score_ownership_three_plus():
+    snap = make_snap(1)
+    assert compute_health_score(snap, owner_changes=3) == pytest.approx(0.0)
+
+
+def test_health_score_reg_cost_rising():
+    snap = make_snap(1, reg_cost_tao=0.12)
+    # >10% rise from 0.10 → 20 pts reg + 20 pts ownership = 40
+    assert compute_health_score(snap, prev_reg_cost=0.10) == pytest.approx(40.0)
+
+
+def test_health_score_reg_cost_stable():
+    snap = make_snap(1, reg_cost_tao=0.105)
+    # ±10% stable → 10 pts reg + 20 pts ownership = 30
+    assert compute_health_score(snap, prev_reg_cost=0.10) == pytest.approx(30.0)
+
+
+def test_health_score_reg_cost_falling():
+    snap = make_snap(1, reg_cost_tao=0.05)
+    # >10% fall → 0 pts reg + 20 pts ownership = 20
+    assert compute_health_score(snap, prev_reg_cost=0.10) == pytest.approx(20.0)
+
+
+def test_health_score_liquidity_high():
+    # volume_tao = 100 * 0.01 = 1.0; ratio = 1.0 / 10.0 = 0.10 > 0.05 → 30 pts; ownership → 20 pts
+    snap = make_snap(1, volume_24h_alpha=100.0, alpha_price_tao=0.01, alpha_mcap_tao=10.0)
+    score = compute_health_score(snap)
+    assert score == pytest.approx(50.0)
+
+
+def test_health_score_liquidity_medium():
+    # volume_tao = 20 * 0.01 = 0.2; ratio = 0.2 / 10.0 = 0.02, >0.01 → 20 pts; ownership → 20 pts
+    snap = make_snap(1, volume_24h_alpha=20.0, alpha_price_tao=0.01, alpha_mcap_tao=10.0)
+    score = compute_health_score(snap)
+    assert score == pytest.approx(40.0)
 
 
 # ── Momentum score ────────────────────────────────────────────────────────────
@@ -161,10 +185,10 @@ def test_momentum_score_uses_net_flow_when_available():
 def test_score_snapshots_sets_composite():
     snaps = [
         make_snap(1, daily_emission_tao=50.0, alpha_mcap_usd=5_000_000,
-                  tao_usd_price=300.0, n_neurons=200,
+                  tao_usd_price=300.0,
                   gh_last_push=datetime.now(timezone.utc) - timedelta(days=5)),
         make_snap(2, daily_emission_tao=5.0, alpha_mcap_usd=10_000_000,
-                  tao_usd_price=300.0, n_neurons=50),
+                  tao_usd_price=300.0),
     ]
     score_snapshots(snaps, history_by_netuid={})
     for s in snaps:
@@ -173,22 +197,21 @@ def test_score_snapshots_sets_composite():
 
 
 def test_score_snapshots_weight_renormalization():
-    """When momentum_score is None, composite uses renormalized yield+quality weights."""
+    """When momentum_score is None, composite uses renormalized yield+health weights."""
     snap = make_snap(
         1,
         daily_emission_tao=50.0,
         alpha_mcap_usd=5_000_000,
         tao_usd_price=300.0,
-        n_neurons=200,
         gh_last_push=datetime.now(timezone.utc) - timedelta(days=5),
         # No history → momentum_score will be None
     )
     score_snapshots([snap], history_by_netuid={})
     assert snap.momentum_score is None
     assert snap.yield_score is not None
-    assert snap.quality_score is not None
-    w_y, w_q = config.YIELD_WEIGHT, config.QUALITY_WEIGHT
-    expected = (snap.yield_score * w_y + snap.quality_score * w_q) / (w_y + w_q)
+    assert snap.health_score is not None
+    w_y, w_h = config.YIELD_WEIGHT, config.HEALTH_WEIGHT
+    expected = (snap.yield_score * w_y + snap.health_score * w_h) / (w_y + w_h)
     assert snap.composite_score == pytest.approx(expected, rel=0.01)
 
 
@@ -196,10 +219,10 @@ def test_hype_score_not_included_in_composite():
     """Hype is computed for display but must not affect composite score."""
     now = datetime.now(timezone.utc)
     base = make_snap(1, daily_emission_tao=50.0, alpha_mcap_usd=5_000_000,
-                     tao_usd_price=300.0, n_neurons=200,
+                     tao_usd_price=300.0,
                      gh_last_push=now - timedelta(days=5))
     with_hype = make_snap(1, daily_emission_tao=50.0, alpha_mcap_usd=5_000_000,
-                          tao_usd_price=300.0, n_neurons=200,
+                          tao_usd_price=300.0,
                           gh_last_push=now - timedelta(days=5),
                           x_followers=50000, x_last_tweet=now - timedelta(days=1))
     score_snapshots([base], history_by_netuid={})

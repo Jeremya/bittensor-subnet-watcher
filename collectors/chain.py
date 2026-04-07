@@ -74,14 +74,18 @@ class ChainCollector:
                 info = info_by_netuid.get(dyn.netuid)
                 daily_em = dyn.tao_in_emission.tao * config.BLOCKS_PER_DAY
                 tao_in = dyn.tao_in.tao
-                mcap_usd = (tao_in * tao_usd) if tao_usd is not None else None
+                total_alpha = dyn.alpha_in.tao + dyn.alpha_out.tao
+                price_tao = dyn.price.tao
+                mcap_tao = total_alpha * price_tao
+                mcap_usd = (mcap_tao * tao_usd) if tao_usd is not None else None
 
                 snap = SubnetSnapshot(
                     netuid=dyn.netuid,
                     polled_at=now,
-                    alpha_price_tao=dyn.price.tao,
-                    alpha_mcap_tao=tao_in,
+                    alpha_price_tao=price_tao,
+                    alpha_mcap_tao=mcap_tao,
                     alpha_mcap_usd=mcap_usd,
+                    tao_in_tao=tao_in,
                     volume_24h_alpha=dyn.subnet_volume.tao,
                     tao_usd_price=tao_usd,
                     daily_emission_tao=daily_em,

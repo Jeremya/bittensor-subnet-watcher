@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     alpha_price_tao    REAL,
     alpha_mcap_tao     REAL,
     alpha_mcap_usd     REAL,
+    tao_in_tao         REAL,
     volume_24h_alpha   REAL,
     tao_usd_price      REAL,
     daily_emission_tao REAL,
@@ -35,7 +36,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     x_last_tweet       TEXT,
     x_followers        INTEGER,
     yield_score        REAL,
-    quality_score      REAL,
+    health_score       REAL,
     momentum_score     REAL,
     hype_score         REAL,
     composite_score    REAL
@@ -61,6 +62,17 @@ CREATE TABLE IF NOT EXISTS subnet_registry (
     github_url TEXT,
     x_handle   TEXT,
     updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_positions (
+    coldkey            TEXT NOT NULL,
+    netuid             INTEGER NOT NULL,
+    alpha_amount       REAL NOT NULL,
+    tao_value          REAL NOT NULL,
+    baseline_tao_value REAL NOT NULL,
+    first_seen_at      TEXT NOT NULL,
+    updated_at         TEXT NOT NULL,
+    PRIMARY KEY (coldkey, netuid)
 );
 
 CREATE INDEX IF NOT EXISTS idx_snapshots_netuid_time ON snapshots (netuid, polled_at);
@@ -95,9 +107,23 @@ async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
         ("hype_score", "REAL"),
         ("net_tao_flow_tao", "REAL"),
         ("max_allowed_uids", "INTEGER"),
+        ("tao_in_tao", "REAL"),
     ]:
         if col not in existing_cols:
             await conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {definition}")
+    # health_score migration — three cases:
+    #   (a) quality_score exists, health_score absent → rename (preserves data)
+    #   (b) neither exists (very old DB) → add as new column
+    #   (c) health_score already present → nothing to do (covers both clean installs
+    #       and DBs where the ADD COLUMN already ran before the rename was attempted)
+    has_quality = "quality_score" in existing_cols
+    has_health = "health_score" in existing_cols
+    if has_quality and not has_health:
+        await conn.execute(
+            "ALTER TABLE snapshots RENAME COLUMN quality_score TO health_score"
+        )
+    elif not has_quality and not has_health:
+        await conn.execute("ALTER TABLE snapshots ADD COLUMN health_score REAL")
     await conn.commit()
     return conn
 
@@ -106,22 +132,22 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
     await db.execute("""
         INSERT INTO snapshots (
             netuid, polled_at, alpha_price_tao, alpha_mcap_tao, alpha_mcap_usd,
-            volume_24h_alpha, tao_usd_price, daily_emission_tao, emission_rank,
+            tao_in_tao, volume_24h_alpha, tao_usd_price, daily_emission_tao, emission_rank,
             net_tao_flow_tao, n_neurons, max_allowed_uids, reg_cost_tao, owner_coldkey,
             gh_last_push, gh_stars, gh_forks, gh_open_issues,
             x_last_tweet, x_followers,
-            yield_score, quality_score, momentum_score, hype_score, composite_score
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            yield_score, health_score, momentum_score, hype_score, composite_score
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         snap.netuid, _dt_to_str(snap.polled_at),
         snap.alpha_price_tao, snap.alpha_mcap_tao, snap.alpha_mcap_usd,
-        snap.volume_24h_alpha, snap.tao_usd_price,
+        snap.tao_in_tao, snap.volume_24h_alpha, snap.tao_usd_price,
         snap.daily_emission_tao, snap.emission_rank,
         snap.net_tao_flow_tao,
         snap.n_neurons, snap.max_allowed_uids, snap.reg_cost_tao, snap.owner_coldkey,
         _dt_to_str(snap.gh_last_push), snap.gh_stars, snap.gh_forks, snap.gh_open_issues,
         _dt_to_str(snap.x_last_tweet), snap.x_followers,
-        snap.yield_score, snap.quality_score, snap.momentum_score, snap.hype_score,
+        snap.yield_score, snap.health_score, snap.momentum_score, snap.hype_score,
         snap.composite_score,
     ))
     await db.commit()
@@ -181,6 +207,36 @@ async def get_emission_rank_24h_ago(db: aiosqlite.Connection) -> dict[int, Optio
     """)
     rows = await cursor.fetchall()
     return {row["netuid"]: row["emission_rank"] for row in rows}
+
+
+async def get_owner_change_counts(db: aiosqlite.Connection,
+                                   days: int = 30) -> dict[int, int]:
+    """Return {netuid: distinct_owner_count} over the last `days` days.
+    Subnets with no owner_coldkey data are omitted (caller defaults to 1 = stable)."""
+    cursor = await db.execute("""
+        SELECT netuid, COUNT(DISTINCT owner_coldkey) AS owner_count
+        FROM snapshots
+        WHERE datetime(polled_at) >= datetime('now', ? || ' days')
+          AND owner_coldkey IS NOT NULL
+        GROUP BY netuid
+    """, (f"-{days}",))
+    rows = await cursor.fetchall()
+    return {row["netuid"]: row["owner_count"] for row in rows}
+
+
+async def get_reg_cost_7d_ago(db: aiosqlite.Connection) -> dict[int, Optional[float]]:
+    """Return {netuid: reg_cost_tao} from the most recent snapshot ≥7 days old per netuid."""
+    cursor = await db.execute("""
+        SELECT netuid, reg_cost_tao
+        FROM snapshots s1
+        WHERE polled_at = (
+            SELECT MAX(polled_at) FROM snapshots s2
+            WHERE s2.netuid = s1.netuid
+            AND datetime(s2.polled_at) <= datetime('now', '-7 days')
+        )
+    """)
+    rows = await cursor.fetchall()
+    return {row["netuid"]: row["reg_cost_tao"] for row in rows}
 
 
 async def get_subnet_detail(db: aiosqlite.Connection,
@@ -290,3 +346,62 @@ async def get_registry(db: aiosqlite.Connection) -> dict[int, aiosqlite.Row]:
     cursor = await db.execute("SELECT * FROM subnet_registry")
     rows = await cursor.fetchall()
     return {row["netuid"]: row for row in rows}
+
+
+async def upsert_portfolio_position(db: aiosqlite.Connection,
+                                     coldkey: str, netuid: int,
+                                     alpha_amount: float, tao_value: float) -> None:
+    """Insert or update a portfolio position. baseline_tao_value is frozen once > 0."""
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute("""
+        INSERT INTO portfolio_positions
+            (coldkey, netuid, alpha_amount, tao_value, baseline_tao_value, first_seen_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(coldkey, netuid) DO UPDATE SET
+            alpha_amount = excluded.alpha_amount,
+            tao_value = excluded.tao_value,
+            updated_at = excluded.updated_at,
+            baseline_tao_value = CASE
+                WHEN excluded.tao_value > 0 AND portfolio_positions.baseline_tao_value = 0
+                THEN excluded.tao_value
+                ELSE portfolio_positions.baseline_tao_value
+            END
+    """, (coldkey, netuid, alpha_amount, tao_value, tao_value, now, now))
+    await db.commit()
+
+
+async def delete_gone_positions(db: aiosqlite.Connection,
+                                 coldkey: str,
+                                 current_netuids: set[int]) -> None:
+    """Remove positions for coldkey that are no longer in current_netuids (fully unstaked)."""
+    if not current_netuids:
+        await db.execute("DELETE FROM portfolio_positions WHERE coldkey = ?", (coldkey,))
+    else:
+        placeholders = ",".join("?" * len(current_netuids))
+        await db.execute(
+            f"DELETE FROM portfolio_positions WHERE coldkey = ? AND netuid NOT IN ({placeholders})",
+            (coldkey, *current_netuids),
+        )
+    await db.commit()
+
+
+async def get_portfolio_positions(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    """All positions LEFT JOINed with subnet_registry, ordered by coldkey then netuid."""
+    cursor = await db.execute("""
+        SELECT p.*, r.name, s.tao_usd_price
+        FROM portfolio_positions p
+        LEFT JOIN subnet_registry r ON p.netuid = r.netuid
+        LEFT JOIN (
+            SELECT netuid, tao_usd_price, MAX(polled_at) AS max_ts
+            FROM snapshots GROUP BY netuid
+        ) s ON p.netuid = s.netuid
+        ORDER BY p.coldkey, p.netuid
+    """)
+    return await cursor.fetchall()
+
+
+async def get_staked_netuids(db: aiosqlite.Connection) -> set[int]:
+    """Return set of netuids with any active portfolio position."""
+    cursor = await db.execute("SELECT DISTINCT netuid FROM portfolio_positions")
+    rows = await cursor.fetchall()
+    return {row["netuid"] for row in rows}

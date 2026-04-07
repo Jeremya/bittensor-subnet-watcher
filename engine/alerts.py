@@ -9,6 +9,18 @@ import config
 logger = logging.getLogger(__name__)
 
 
+def _registry_name(registry: dict, netuid: int) -> str:
+    row = registry.get(netuid)
+    if row is None:
+        return f"SN{netuid}"
+    if isinstance(row, dict):
+        return row.get("name") or f"SN{netuid}"
+    try:
+        return row["name"] or f"SN{netuid}"
+    except (KeyError, TypeError, IndexError):
+        return getattr(row, "name", None) or f"SN{netuid}"
+
+
 def check_emission_divergence(snap: SubnetSnapshot,
                                emission_rank: int,
                                mcap_rank: int) -> Optional[AlertRecord]:
@@ -113,6 +125,138 @@ def check_social_silence(snap: SubnetSnapshot) -> Optional[AlertRecord]:
     return None
 
 
+def check_tao_outflow(snap: SubnetSnapshot) -> Optional[AlertRecord]:
+    """Net TAO outflow > NET_OUTFLOW_ALERT_PCT of pool in one poll → capital flight."""
+    if snap.net_tao_flow_tao is None or snap.alpha_mcap_tao is None:
+        return None
+    if snap.alpha_mcap_tao <= 0:
+        return None
+    outflow_pct = -snap.net_tao_flow_tao / snap.alpha_mcap_tao
+    if outflow_pct > config.NET_OUTFLOW_ALERT_PCT:
+        return AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=snap.netuid,
+            subnet_name=f"SN{snap.netuid}",
+            alert_type="tao_outflow",
+            description=(
+                f"Net TAO outflow {outflow_pct*100:.1f}% of pool in one poll "
+                f"({snap.net_tao_flow_tao:+.1f} τ)"
+            ),
+            current_value=round(outflow_pct, 4),
+            threshold=config.NET_OUTFLOW_ALERT_PCT,
+        )
+    return None
+
+
+def check_whale_inflow(snap: SubnetSnapshot) -> Optional[AlertRecord]:
+    """Net TAO inflow > WHALE_INFLOW_PCT of pool in one poll → large capital entry."""
+    if snap.net_tao_flow_tao is None or snap.alpha_mcap_tao is None:
+        return None
+    if snap.alpha_mcap_tao <= 0:
+        return None
+    inflow_pct = snap.net_tao_flow_tao / snap.alpha_mcap_tao
+    if inflow_pct > config.WHALE_INFLOW_PCT:
+        return AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=snap.netuid,
+            subnet_name=f"SN{snap.netuid}",
+            alert_type="whale_inflow",
+            description=(
+                f"Net TAO inflow {inflow_pct*100:.1f}% of pool in one poll "
+                f"({snap.net_tao_flow_tao:+.1f} τ)"
+            ),
+            current_value=round(inflow_pct, 4),
+            threshold=config.WHALE_INFLOW_PCT,
+        )
+    return None
+
+
+def check_emission_near_zero(snap: SubnetSnapshot) -> Optional[AlertRecord]:
+    """Daily emission below EMISSION_NEAR_ZERO_TAO — subnet losing its emission share."""
+    if snap.daily_emission_tao is None:
+        return None
+    if snap.alpha_mcap_usd is None or snap.alpha_mcap_usd < config.EMISSION_NEAR_ZERO_MIN_MCAP_USD:
+        return None
+    if snap.daily_emission_tao < config.EMISSION_NEAR_ZERO_TAO:
+        return AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=snap.netuid,
+            subnet_name=f"SN{snap.netuid}",
+            alert_type="emission_near_zero",
+            description=(
+                f"Daily emission {snap.daily_emission_tao:.2f} τ/day "
+                f"(threshold {config.EMISSION_NEAR_ZERO_TAO} τ/day)"
+            ),
+            current_value=round(snap.daily_emission_tao, 4),
+            threshold=config.EMISSION_NEAR_ZERO_TAO,
+        )
+    return None
+
+
+def check_liquidity_floor(snap: SubnetSnapshot) -> Optional[AlertRecord]:
+    """Daily volume/pool ratio below LIQUIDITY_FLOOR_RATIO — investors may be trapped."""
+    if (snap.volume_24h_alpha is None or snap.alpha_price_tao is None
+            or snap.alpha_mcap_tao is None):
+        return None
+    if snap.alpha_mcap_tao <= 0:
+        return None
+    if snap.alpha_mcap_usd is None or snap.alpha_mcap_usd < config.LIQUIDITY_MIN_MCAP_USD:
+        return None
+    ratio = (snap.volume_24h_alpha * snap.alpha_price_tao) / snap.alpha_mcap_tao
+    if ratio < config.LIQUIDITY_FLOOR_RATIO:
+        return AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=snap.netuid,
+            subnet_name=f"SN{snap.netuid}",
+            alert_type="liquidity_floor",
+            description=(
+                f"24h volume/pool ratio {ratio*100:.3f}% — effectively illiquid "
+                f"(threshold {config.LIQUIDITY_FLOOR_RATIO*100:.1f}%)"
+            ),
+            current_value=round(ratio, 6),
+            threshold=config.LIQUIDITY_FLOOR_RATIO,
+        )
+    return None
+
+
+def check_hyperparameter_change(current: SubnetSnapshot,
+                                  prev: SubnetSnapshot) -> Optional[AlertRecord]:
+    """Reg cost change > REG_COST_CHANGE_PCT or max_allowed_uids change — owner intervention."""
+    # Reg cost shift
+    if (current.reg_cost_tao is not None and prev.reg_cost_tao is not None
+            and prev.reg_cost_tao > 0):
+        pct = (current.reg_cost_tao - prev.reg_cost_tao) / prev.reg_cost_tao
+        if abs(pct) > config.REG_COST_CHANGE_PCT:
+            direction = "↑" if pct > 0 else "↓"
+            return AlertRecord(
+                fired_at=datetime.now(timezone.utc),
+                netuid=current.netuid,
+                subnet_name=f"SN{current.netuid}",
+                alert_type="hyperparameter_change",
+                description=(
+                    f"Reg cost {direction}{abs(pct)*100:.0f}%: "
+                    f"{prev.reg_cost_tao:.4f} → {current.reg_cost_tao:.4f} τ"
+                ),
+                current_value=round(pct, 4),
+                threshold=config.REG_COST_CHANGE_PCT,
+            )
+    # Capacity ceiling shift
+    if (current.max_allowed_uids is not None and prev.max_allowed_uids is not None
+            and current.max_allowed_uids != prev.max_allowed_uids):
+        return AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=current.netuid,
+            subnet_name=f"SN{current.netuid}",
+            alert_type="hyperparameter_change",
+            description=(
+                f"max_allowed_uids changed: {prev.max_allowed_uids} → {current.max_allowed_uids}"
+            ),
+            current_value=float(current.max_allowed_uids),
+            threshold=float(prev.max_allowed_uids),
+        )
+    return None
+
+
 def check_new_entry(snap: SubnetSnapshot, known_netuids: set[int]) -> Optional[AlertRecord]:
     if snap.netuid not in known_netuids:
         return AlertRecord(
@@ -154,9 +298,14 @@ async def evaluate_alerts(
     known_netuids: set[int],
 ) -> list[AlertRecord]:
     """
-    Evaluate all 7 alert conditions across all snapshots.
+    Evaluate all alert conditions across all snapshots.
     Dedup via cooldown check. Persist new alerts to DB.
     Returns list of newly fired alerts.
+
+    Project-monitoring alerts: emission_divergence, dead_github, emission_drop,
+      github_spike, ownership_transfer, social_silence, new_entry
+    Capital-protection alerts: tao_outflow, whale_inflow, emission_near_zero,
+      liquidity_floor, hyperparameter_change
     """
     # Build mcap rank (sort by alpha_mcap_tao descending)
     valid_mcap = [(s.netuid, s.alpha_mcap_tao)
@@ -171,6 +320,7 @@ async def evaluate_alerts(
         candidates: list[Optional[AlertRecord]] = []
         prev = prev_by_netuid.get(snap.netuid)
 
+        # ── Project-monitoring ────────────────────────────────────────────────
         # 1. Emission divergence
         em_rank = snap.emission_rank
         mc_rank = mcap_rank_by_netuid.get(snap.netuid)
@@ -198,13 +348,29 @@ async def evaluate_alerts(
         # 7. New entry
         candidates.append(check_new_entry(snap, known_netuids))
 
+        # ── Capital-protection ────────────────────────────────────────────────
+        # 8. Net TAO outflow (capital flight this poll)
+        candidates.append(check_tao_outflow(snap))
+
+        # 9. Whale TAO inflow (large capital entry this poll)
+        candidates.append(check_whale_inflow(snap))
+
+        # 10. Emission approaching zero
+        candidates.append(check_emission_near_zero(snap))
+
+        # 11. Liquidity floor breached
+        candidates.append(check_liquidity_floor(snap))
+
+        # 12. Owner hyperparameter change (requires prev)
+        if prev:
+            candidates.append(check_hyperparameter_change(snap, prev))
+
         # Dedup and persist
         for alert in candidates:
             if alert is None:
                 continue
             # Set subnet name from registry
-            alert.subnet_name = (registry.get(snap.netuid, {}).get("name")
-                                 or f"SN{snap.netuid}")
+            alert.subnet_name = _registry_name(registry, snap.netuid)
             in_cooldown = await is_alert_in_cooldown(
                 db, snap.netuid, alert.alert_type, config.ALERT_COOLDOWN_HOURS
             )
