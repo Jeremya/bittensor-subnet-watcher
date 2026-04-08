@@ -25,22 +25,21 @@ class PortfolioCollector:
         for coldkey in coldkeys:
             try:
                 stakes = await subtensor.get_stake_info_for_coldkey(coldkey)
+                positions: dict[int, dict] = {}
+                for s in (stakes or []):
+                    netuid = s.netuid
+                    alpha = s.stake.tao  # alpha token amount as decimal
+                    price = price_by_netuid.get(netuid, 0.0)
+                    tao_val = alpha * price
+
+                    if netuid in positions:
+                        positions[netuid]["alpha_amount"] += alpha
+                        positions[netuid]["tao_value"] += tao_val
+                    else:
+                        positions[netuid] = {"alpha_amount": alpha, "tao_value": tao_val}
             except Exception as exc:
                 logger.warning("[PORTFOLIO] coldkey_failed coldkey=%.12s... error=%s", coldkey, exc)
                 continue
-
-            positions: dict[int, dict] = {}
-            for s in (stakes or []):
-                netuid = s.netuid
-                alpha = s.stake.tao  # alpha token amount as decimal
-                price = price_by_netuid.get(netuid, 0.0)
-                tao_val = alpha * price
-
-                if netuid in positions:
-                    positions[netuid]["alpha_amount"] += alpha
-                    positions[netuid]["tao_value"] += tao_val
-                else:
-                    positions[netuid] = {"alpha_amount": alpha, "tao_value": tao_val}
 
             result[coldkey] = positions
             logger.info("[PORTFOLIO] coldkey=%.12s... subnets=%d", coldkey, len(positions))
