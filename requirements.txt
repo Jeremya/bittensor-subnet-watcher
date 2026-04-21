@@ -10,5 +10,7 @@ APScheduler>=3.10.0
 python-dotenv>=1.0.0
 aiosqlite>=0.20.0
 httpx
+huggingface_hub>=0.22.0
+anthropic>=0.25.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
