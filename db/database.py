@@ -563,6 +563,16 @@ async def has_active_analyst_coverage(db: aiosqlite.Connection,
     return row[0] > 0
 
 
+async def get_covered_netuids(db: aiosqlite.Connection, decay_hours: int) -> set[int]:
+    """Return the set of netuids with at least one analyst mention within decay_hours."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=decay_hours)).isoformat()
+    cursor = await db.execute(
+        "SELECT DISTINCT netuid FROM analyst_mentions WHERE mentioned_at > ?",
+        (cutoff,),
+    )
+    return {row[0] for row in await cursor.fetchall()}
+
+
 async def insert_milestone(db: aiosqlite.Connection,
                            netuid: int,
                            milestone_type: str,

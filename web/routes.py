@@ -10,6 +10,7 @@ from db.database import (
     add_analyst_handle,
     get_analyst_mentions_for_netuid,
     get_analyst_watchlist,
+    get_covered_netuids,
     get_milestones_for_netuid,
     get_latest_snapshots, get_last_50_alerts,
     get_latest_snapshots_with_registry, get_emission_rank_24h_ago,
@@ -35,14 +36,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         trend_raw = await get_emission_rank_24h_ago(db)
         last_poll = snapshots[0]["polled_at"] if snapshots else None
         staked_netuids = await get_staked_netuids(db)
-        coverage_netuids: set[int] = set()
-        for snap in snapshots:
-            if await has_active_analyst_coverage(
-                db,
-                snap["netuid"],
-                config.ANALYST_COVERAGE_DECAY_HOURS,
-            ):
-                coverage_netuids.add(snap["netuid"])
+        coverage_netuids = await get_covered_netuids(db, config.ANALYST_COVERAGE_DECAY_HOURS)
 
         sorted_by_mcap = sorted(
             [s for s in snapshots if s["alpha_mcap_tao"] is not None],
@@ -297,7 +291,10 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
     async def analysts_add(handle: str = Form(...)):
         clean = handle.lstrip("@").strip()
         if clean:
-            await add_analyst_handle(db, clean, source="dashboard")
+            db_rows = await get_analyst_watchlist(db)
+            total = len(db_rows) + len(config.ANALYST_HANDLES)
+            if total < config.MAX_ANALYST_HANDLES:
+                await add_analyst_handle(db, clean, source="dashboard")
         return RedirectResponse("/analysts", status_code=303)
 
     @app.post("/analysts/remove/{handle}")

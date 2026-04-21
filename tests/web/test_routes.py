@@ -247,3 +247,34 @@ async def test_subnet_category_post_updates_registry(app, db):
     assert resp.status_code == 303
     assert row["category"] == "AI Training"
     assert row["category_confirmed"] == 1
+
+
+async def test_analysts_page_loads(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/analysts")
+    assert resp.status_code == 200
+    assert "Analyst Watchlist" in resp.text
+
+
+async def test_analysts_add_handle(app, db):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/analysts/add", data={"handle": "@testuser"}, follow_redirects=True
+        )
+    assert resp.status_code == 200
+    assert "testuser" in resp.text
+    cursor = await db.execute(
+        "SELECT handle FROM analyst_watchlist WHERE handle='testuser'"
+    )
+    assert await cursor.fetchone() is not None
+
+
+async def test_analysts_remove_dashboard_handle(app, db):
+    await add_analyst_handle(db, "toremove", source="dashboard")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/analysts/remove/toremove", follow_redirects=True)
+    assert resp.status_code == 200
+    cursor = await db.execute(
+        "SELECT handle FROM analyst_watchlist WHERE handle='toremove'"
+    )
+    assert await cursor.fetchone() is None

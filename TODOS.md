@@ -26,6 +26,33 @@ there is no apparent `get_all_stakers_for_subnet(netuid)` in the public API.
 
 ---
 
+---
+
+## P1 — Analyst/Milestone Feature Follow-ups
+
+### Handle cleanup on config handle removal
+**What:** When a handle is removed from the `ANALYST_HANDLES` env var, its old
+`analyst_mentions` rows remain in the DB and are still counted toward coverage badges.
+The handle silently disappears from the `/analysts` UI without explicit removal.
+
+**Why:** Can confuse the coverage badge display and the analyst feed on subnet detail pages
+if the removed handle's historical mentions are still visible and counted as "active" within
+the 72h decay window.
+
+**Current state:** Config handles are never written to `analyst_watchlist` — only
+dashboard-added handles are. So removing from env removes from the collection loop
+immediately. But historical `analyst_mentions` rows remain indefinitely.
+
+**Where to start:** `AnalystCollector._all_handles()` in `collectors/analyst.py`. On each
+run, compare the union of config + DB handles against previously stored handle set. Consider
+adding a `last_seen_at` or `active` flag to `analyst_watchlist` to tombstone removed handles.
+
+**Effort:** S (2 hours)
+**Priority:** P1 — low urgency, no correctness impact
+**Depends on:** nothing
+
+---
+
 ## P2 — Phase 2 Vision
 
 ### Portfolio wallet integration

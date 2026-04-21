@@ -18,6 +18,15 @@ ARXIV_API = "http://export.arxiv.org/api/query"
 _ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
 _VERSION_RE = re.compile(r"v\d+$")
 
+# Module-level async client — created once if API key is set, avoids repeated init overhead
+_anthropic_client = None
+if config.ANTHROPIC_API_KEY:
+    try:
+        import anthropic as _anthropic_module
+        _anthropic_client = _anthropic_module.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+    except Exception:
+        pass
+
 
 def parse_arxiv_feed(xml_text: str) -> list[dict]:
     try:
@@ -61,13 +70,10 @@ async def interpret_milestone(subnet_name: str,
                               milestone_type: str,
                               title: str,
                               url: str) -> tuple[Optional[str], Optional[str]]:
-    if not config.ANTHROPIC_API_KEY:
+    if _anthropic_client is None:
         return None, None
 
     try:
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
         prompt = (
             "You are a Bittensor investment analyst. Given a new publication from a "
             "Bittensor subnet team, write two things:\n"
@@ -80,7 +86,7 @@ async def interpret_milestone(subnet_name: str,
             f"URL: {url}\n\n"
             'Reply in JSON only: {"summary": "...", "take": "..."}'
         )
-        response = client.messages.create(
+        response = await _anthropic_client.messages.create(
             model=config.AI_INTERPRETER_MODEL,
             max_tokens=200,
             messages=[{"role": "user", "content": prompt}],

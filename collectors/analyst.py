@@ -35,14 +35,22 @@ def _name_patterns(registry: dict) -> list[tuple[int, re.Pattern]]:
     return patterns
 
 
-def match_subnets(text: str, registry: dict) -> set[int]:
+def match_subnets(text: str, registry: dict,
+                   patterns: list[tuple[int, re.Pattern]] | None = None) -> set[int]:
+    """Return set of netuids mentioned in text via SN{n} pattern or subnet name.
+
+    Pass pre-compiled `patterns` (from _name_patterns) when calling in a loop to
+    avoid recompiling regexes for every tweet.
+    """
     matched: set[int] = set()
     for match in _SN_PATTERN.finditer(text):
         netuid = int(match.group(1))
         if netuid in registry:
             matched.add(netuid)
 
-    for netuid, pattern in _name_patterns(registry):
+    if patterns is None:
+        patterns = _name_patterns(registry)
+    for netuid, pattern in patterns:
         if pattern.search(text):
             matched.add(netuid)
     return matched
@@ -116,10 +124,11 @@ class AnalystCollector:
             return 0
 
         new_count = 0
+        patterns = _name_patterns(registry)  # compile once per collection run
         for handle in handles:
             tweets = await _scrape_tweets(handle, config.ANALYST_TWEET_LOOKBACK_HOURS)
             for tweet in tweets:
-                for netuid in match_subnets(tweet["text"], registry):
+                for netuid in match_subnets(tweet["text"], registry, patterns):
                     inserted = await insert_analyst_mention(
                         db,
                         handle,

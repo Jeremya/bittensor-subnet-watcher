@@ -60,15 +60,51 @@ def test_parse_arxiv_feed_returns_empty_on_bad_xml():
 
 
 @pytest.mark.asyncio
-async def test_interpret_milestone_returns_none_when_no_api_key():
+async def test_interpret_milestone_returns_none_when_no_client():
     from collectors.milestone import interpret_milestone
 
-    with patch("collectors.milestone.config") as mock_cfg:
-        mock_cfg.ANTHROPIC_API_KEY = ""
+    # Patch the module-level client to None (simulates missing API key)
+    with patch("collectors.milestone._anthropic_client", None):
         result = await interpret_milestone(
             "Templar", 3, "arxiv", "Test Paper", "http://example.com"
         )
     assert result == (None, None)
+
+
+@pytest.mark.asyncio
+async def test_interpret_milestone_returns_summary_and_take():
+    from unittest.mock import MagicMock
+    from collectors.milestone import interpret_milestone
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text='{"summary": "S", "take": "T"}')]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+    with patch("collectors.milestone._anthropic_client", mock_client):
+        summary, take = await interpret_milestone(
+            "Templar", 3, "arxiv", "Test Paper", "http://example.com"
+        )
+    assert summary == "S"
+    assert take == "T"
+
+
+@pytest.mark.asyncio
+async def test_interpret_milestone_returns_none_on_malformed_json():
+    from unittest.mock import MagicMock
+    from collectors.milestone import interpret_milestone
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="not json at all")]
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+    with patch("collectors.milestone._anthropic_client", mock_client):
+        summary, take = await interpret_milestone(
+            "Templar", 3, "arxiv", "Test Paper", "http://example.com"
+        )
+    assert summary is None
+    assert take is None
 
 
 @pytest.mark.asyncio

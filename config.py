@@ -67,6 +67,7 @@ ANALYST_HANDLES: list[str] = [
 ]
 ANALYST_TWEET_LOOKBACK_HOURS: int = 25   # slightly > poll interval to avoid gaps
 ANALYST_COVERAGE_DECAY_HOURS: int = 72   # coverage badge visible for 72h after mention
+MAX_ANALYST_HANDLES: int = int(os.getenv("MAX_ANALYST_HANDLES", "20"))  # scrape cap
 
 # ── AI Signal Interpreter ──────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
