@@ -9,6 +9,16 @@ logger = logging.getLogger(__name__)
 
 GITHUB_API = "https://api.github.com/repos/{owner}/{repo}"
 
+CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "AI Training": ["training", "finetune", "fine-tune", "gradient", "pretraining", "pre-training", "llm"],
+    "Post-Training/RLHF": ["rlhf", "alignment", "reinforcement", "reward model"],
+    "Data / Retrieval": ["dataset", "scraping", "retrieval", "indexing", "storage"],
+    "Biomedical": ["biomedical", "protein", "genomics", "drug", "clinical"],
+    "Quant / Finance": ["trading", "quant", "alpha", "market", "prediction"],
+    "Privacy / Compute": ["zkp", "zero-knowledge", "zero knowledge", "secure compute", "homomorphic"],
+    "Infrastructure": ["bandwidth", "networking", "storage", "compute", "validator"],
+}
+
 
 def parse_github_url(url: Optional[str]) -> Optional[tuple[str, str]]:
     """Extract (owner, repo) from a GitHub URL. Returns None if not a GitHub URL."""
@@ -24,6 +34,31 @@ def parse_github_url(url: Optional[str]) -> Optional[tuple[str, str]]:
     if len(path_parts) < 2:
         return None
     return path_parts[0], path_parts[1]
+
+
+def suggest_category(readme_text: str) -> str:
+    lower = readme_text.lower()
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in lower:
+                return category
+    return "Other"
+
+
+async def fetch_readme(owner: str, repo: str) -> Optional[str]:
+    for branch in ("main", "master"):
+        url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/README.md"
+        try:
+            async with aiohttp_session() as session:
+                async with session.get(
+                    url,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        return await resp.text()
+        except Exception:
+            pass
+    return None
 
 
 class GitHubCollector:
@@ -87,6 +122,9 @@ class GitHubCollector:
             owner, repo = parsed
             data = await GitHubCollector.fetch_repo(owner, repo)
             if data is not None:
+                readme = await fetch_readme(owner, repo)
+                if readme:
+                    data["category"] = suggest_category(readme)
                 results[netuid] = data
 
         ok = len(results)

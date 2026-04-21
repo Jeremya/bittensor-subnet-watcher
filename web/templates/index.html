@@ -38,6 +38,19 @@
     .trend-up   { color: #00c853; }
     .trend-flat { color: #555; }
     .trend-down { color: #ff5252; }
+    .category-badge { font-size: 0.68rem; padding: 1px 5px; border-radius: 3px;
+                      background: #1a1a2e; color: #555; margin-left: 4px; }
+    .coverage-badge { color: #00bcd4; margin-left: 4px; font-size: 0.8em; cursor: help; }
+    .sidebar { width: 160px; flex-shrink: 0; padding: 16px 12px;
+               border-right: 1px solid #222; overflow-y: auto; }
+    .sidebar h3 { font-size: 0.7rem; color: #555; text-transform: uppercase;
+                  letter-spacing: 1px; margin-bottom: 10px; }
+    .cat-chip { display: block; width: 100%; text-align: left; background: none;
+                border: 1px solid #222; color: #555; font-family: monospace;
+                font-size: 0.72rem; padding: 4px 7px; margin-bottom: 4px;
+                border-radius: 3px; cursor: pointer; }
+    .cat-chip:hover, .cat-chip.active { border-color: #00d4aa; color: #00d4aa; }
+    .cat-chip.all { color: #888; }
     .alert-item { padding: 10px; border: 1px solid #333; margin-bottom: 8px;
                   border-radius: 4px; font-size: 0.8rem; }
     .alert-item .type { font-weight: bold; color: #00d4aa; }
@@ -59,14 +72,22 @@
   <h1>TAO Monitor</h1>
   <span>Subnets: {{ subnet_count }}</span>
   <span>Last poll: {{ last_poll or "never" }}</span>
+  <a href="/analysts" style="margin-left:auto; color:#00d4aa; font-size:0.85rem; text-decoration:none;">Analysts ↗</a>
   <a href="/portfolio" style="margin-left:auto; color:#00d4aa; font-size:0.85rem; text-decoration:none;">Portfolio ↗</a>
 </header>
 <div class="layout">
+  <div class="sidebar">
+    <h3>Category</h3>
+    <button class="cat-chip all active" data-category="" onclick="filterCategory('')">All</button>
+    {% for cat in all_categories %}
+    <button class="cat-chip" data-category="{{ cat }}" onclick="filterCategory('{{ cat }}')">{{ cat }}</button>
+    {% endfor %}
+  </div>
 
   <div class="leaderboard">
     <h2>Leaderboard</h2>
     {% if snapshots %}
-    <table>
+    <table class="leaderboard-table">
       <thead>
         <tr>
           <th>#</th><th>Subnet</th><th>Score</th>
@@ -82,12 +103,14 @@
                      else ("score-low" if score else "score-null")) %}
         {% set trend_cls = "trend-up" if row.trend == "▲"
                            else ("trend-down" if row.trend == "▼" else "trend-flat") %}
-        <tr class="clickable" onclick="location.href='/subnet/{{ row.netuid }}'">
+        <tr class="clickable" data-category="{{ row.category or '' }}" onclick="location.href='/subnet/{{ row.netuid }}'">
           <td class="score-null">{{ loop.index }}</td>
           <td>
             <span class="sn-name">{{ row.name or ("SN" ~ row.netuid) }}</span>
             <span class="sn-id">SN{{ row.netuid }}</span>
+            {%- if row.covered %}<span class="coverage-badge" title="Active analyst coverage">📡</span>{% endif -%}
             {%- if row.staked %}<span class="staked-badge" title="In your portfolio">●</span>{% endif -%}
+            {%- if row.category and row.category != "Other" %}<span class="category-badge">{{ row.category }}</span>{% endif -%}
             <span class="sn-links" onclick="event.stopPropagation()">
               {%- if row.github_url %}<a href="{{ row.github_url }}" target="_blank" rel="noopener">GH↗</a>{% endif -%}
               <a href="https://tao.app/subnet/{{ row.netuid }}" target="_blank" rel="noopener">tao↗</a>
@@ -125,5 +148,20 @@
   </div>
 
 </div>
+<script>
+function filterCategory(category) {
+  document.querySelectorAll('.cat-chip').forEach((button) => {
+    button.classList.toggle('active', button.dataset.category === category);
+  });
+
+  document.querySelectorAll('table.leaderboard-table tbody tr').forEach((row) => {
+    if (!category) {
+      row.style.display = '';
+      return;
+    }
+    row.style.display = row.dataset.category === category ? '' : 'none';
+  });
+}
+</script>
 </body>
 </html>

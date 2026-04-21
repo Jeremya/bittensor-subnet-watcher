@@ -20,14 +20,21 @@ from models import SubnetSnapshot
 from db.database import init_db, insert_snapshot, get_latest_snapshots, \
     get_unsent_alerts, mark_alerts_sent, prune_old_snapshots, get_registry, \
     get_snapshots_for_netuid, get_owner_change_counts, get_reg_cost_7d_ago, \
-    upsert_portfolio_position, delete_gone_positions
+    upsert_portfolio_position, delete_gone_positions, update_registry_category
+from collectors.analyst import AnalystCollector
 from collectors.chain import ChainCollector, init_subtensor, close_subtensor
 from collectors.github import GitHubCollector
+from collectors.milestone import MilestoneCollector
 from collectors.x_scraper import XCollector, close_browser
 from collectors.registry import RegistryCollector
 from collectors.portfolio import PortfolioCollector
 from engine.scorer import score_snapshots
-from engine.alerts import evaluate_alerts
+from engine.alerts import (
+    evaluate_alerts,
+    evaluate_convergence,
+    fire_analyst_alerts,
+    fire_milestone_alerts,
+)
 from bot.telegram import TelegramBot
 from web.routes import create_app
 
@@ -175,6 +182,7 @@ async def poll_cycle() -> None:
 
     known_netuids = set(prev_by_netuid.keys())
     await evaluate_alerts(_db, chain_snapshots, registry, prev_snaps_obj, known_netuids)
+    await evaluate_convergence(_db, registry)
 
     # 7. Send unsent alerts via Telegram
     if _telegram:
@@ -205,7 +213,7 @@ async def poll_cycle() -> None:
 
 
 async def github_collect() -> None:
-    """60-min GitHub data refresh. Updates snapshots in DB."""
+    """60-min GitHub data refresh. Updates snapshots and registry categories in DB."""
     registry = await get_registry(_db)
     gh_data = await GitHubCollector.collect(registry)
     for netuid, data in gh_data.items():
@@ -214,8 +222,60 @@ async def github_collect() -> None:
             UPDATE snapshots SET gh_last_push=?, gh_stars=?, gh_forks=?, gh_open_issues=?
             WHERE id = (SELECT id FROM snapshots WHERE netuid=? ORDER BY polled_at DESC LIMIT 1)
         """, (gh_push, data["gh_stars"], data["gh_forks"], data["gh_open_issues"], netuid))
+        if "category" in data:
+            await update_registry_category(_db, netuid, data["category"], confirmed=False)
     await _db.commit()
     logger.info("[COLLECTOR] github_refresh complete subnets=%d", len(gh_data))
+
+
+async def analyst_collect() -> None:
+    """60-min analyst X handle scrape. Inserts new mentions and fires alerts."""
+    registry = await get_registry(_db)
+    await AnalystCollector.collect(_db, registry)
+    new_alerts = await fire_analyst_alerts(_db, registry)
+    if _telegram and new_alerts:
+        unsent = await get_unsent_alerts(_db)
+        analyst_unsent = [row for row in unsent if row["alert_type"] == "analyst_mention"]
+        if analyst_unsent:
+            ids = [row["id"] for row in analyst_unsent]
+            from models import AlertRecord as AR
+            objs = [AR(
+                fired_at=datetime.fromisoformat(row["fired_at"]),
+                netuid=row["netuid"],
+                subnet_name=row["subnet_name"],
+                alert_type=row["alert_type"],
+                description=row["description"],
+                current_value=row["current_value"],
+                threshold=row["threshold"],
+            ) for row in analyst_unsent]
+            sent_ids = await _telegram.send_alerts(objs, ids)
+            await mark_alerts_sent(_db, sent_ids)
+    logger.info("[COLLECTOR] analyst_collect done new_alerts=%d", len(new_alerts))
+
+
+async def milestone_collect() -> None:
+    """6-hour milestone poll (arXiv + HuggingFace). Inserts new milestones and fires alerts."""
+    registry = await get_registry(_db)
+    await MilestoneCollector.collect(_db, registry)
+    new_alerts = await fire_milestone_alerts(_db, registry)
+    if _telegram and new_alerts:
+        unsent = await get_unsent_alerts(_db)
+        milestone_unsent = [row for row in unsent if row["alert_type"] == "milestone"]
+        if milestone_unsent:
+            ids = [row["id"] for row in milestone_unsent]
+            from models import AlertRecord as AR
+            objs = [AR(
+                fired_at=datetime.fromisoformat(row["fired_at"]),
+                netuid=row["netuid"],
+                subnet_name=row["subnet_name"],
+                alert_type=row["alert_type"],
+                description=row["description"],
+                current_value=row["current_value"],
+                threshold=row["threshold"],
+            ) for row in milestone_unsent]
+            sent_ids = await _telegram.send_alerts(objs, ids)
+            await mark_alerts_sent(_db, sent_ids)
+    logger.info("[COLLECTOR] milestone_collect done new_alerts=%d", len(new_alerts))
 
 
 async def registry_refresh_and_prune() -> None:
@@ -256,6 +316,14 @@ async def main() -> None:
     scheduler.add_job(
         github_collect, "interval", minutes=60,
         max_instances=1, id="github"
+    )
+    scheduler.add_job(
+        analyst_collect, "interval", minutes=60,
+        max_instances=1, id="analyst"
+    )
+    scheduler.add_job(
+        milestone_collect, "interval", hours=6,
+        max_instances=1, id="milestone"
     )
     scheduler.add_job(
         registry_refresh_and_prune, "interval", hours=24,

@@ -3,15 +3,22 @@ import aiosqlite
 from pathlib import Path
 from datetime import datetime, timezone
 import config
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from db.database import (
+    add_analyst_handle,
+    get_analyst_mentions_for_netuid,
+    get_analyst_watchlist,
+    get_milestones_for_netuid,
     get_latest_snapshots, get_last_50_alerts,
     get_latest_snapshots_with_registry, get_emission_rank_24h_ago,
+    has_active_analyst_coverage,
     get_subnet_detail, get_alerts_for_netuid, get_snapshots_for_netuid,
     get_owner_change_counts, get_reg_cost_7d_ago,
     get_portfolio_positions, get_staked_netuids,
+    remove_analyst_handle,
+    update_registry_category,
 )
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -28,6 +35,14 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         trend_raw = await get_emission_rank_24h_ago(db)
         last_poll = snapshots[0]["polled_at"] if snapshots else None
         staked_netuids = await get_staked_netuids(db)
+        coverage_netuids: set[int] = set()
+        for snap in snapshots:
+            if await has_active_analyst_coverage(
+                db,
+                snap["netuid"],
+                config.ANALYST_COVERAGE_DECAY_HOURS,
+            ):
+                coverage_netuids.add(snap["netuid"])
 
         sorted_by_mcap = sorted(
             [s for s in snapshots if s["alpha_mcap_tao"] is not None],
@@ -49,15 +64,24 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             {**dict(s),
              "mcap_rank": mcap_rank_map.get(s["netuid"]),
              "trend": trend_arrow(s["netuid"], s["emission_rank"]),
-             "staked": s["netuid"] in staked_netuids}
+             "staked": s["netuid"] in staked_netuids,
+             "covered": s["netuid"] in coverage_netuids,
+             "category": s["category"] if "category" in s.keys() else None}
             for s in snapshots
         ]
+
+        all_categories = sorted({
+            snap["category"]
+            for snap in enriched
+            if snap.get("category") and snap["category"] != "Other"
+        })
 
         return templates.TemplateResponse(request, "index.html", {
             "snapshots": enriched,
             "alerts": alerts,
             "last_poll": last_poll,
             "subnet_count": len(snapshots),
+            "all_categories": all_categories,
         })
 
     @app.get("/subnet/{netuid}", response_class=HTMLResponse)
@@ -67,6 +91,8 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             return HTMLResponse("Subnet not found", status_code=404)
 
         alerts = await get_alerts_for_netuid(db, netuid, limit=10)
+        analyst_mentions = await get_analyst_mentions_for_netuid(db, netuid, limit=10)
+        milestones = await get_milestones_for_netuid(db, netuid, limit=10)
         all_snaps = await get_latest_snapshots_with_registry(db)
         total = len(all_snaps)
 
@@ -238,6 +264,8 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         return templates.TemplateResponse(request, "subnet.html", {
             "snap": dict(snap),
             "alerts": alerts,
+            "analyst_mentions": analyst_mentions,
+            "milestones": milestones,
             "mcap_rank": mcap_rank,
             "score_rank": score_rank,
             "total_subnets": total,
@@ -249,6 +277,33 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             "gh_push_age_days": gh_push_age_days,
             "x_tweet_age_days": x_tweet_age_days,
         })
+
+    @app.post("/subnet/{netuid}/category")
+    async def subnet_set_category(netuid: int, category: str = Form(...)):
+        await update_registry_category(db, netuid, category, confirmed=True)
+        return RedirectResponse(f"/subnet/{netuid}", status_code=303)
+
+    @app.get("/analysts", response_class=HTMLResponse)
+    async def analysts_page(request: Request):
+        db_rows = await get_analyst_watchlist(db)
+        db_handles = [row["handle"] for row in db_rows]
+        config_handles = config.ANALYST_HANDLES
+        return templates.TemplateResponse(request, "analysts.html", {
+            "db_handles": db_handles,
+            "config_handles": config_handles,
+        })
+
+    @app.post("/analysts/add")
+    async def analysts_add(handle: str = Form(...)):
+        clean = handle.lstrip("@").strip()
+        if clean:
+            await add_analyst_handle(db, clean, source="dashboard")
+        return RedirectResponse("/analysts", status_code=303)
+
+    @app.post("/analysts/remove/{handle}")
+    async def analysts_remove(handle: str):
+        await remove_analyst_handle(db, handle)
+        return RedirectResponse("/analysts", status_code=303)
 
     @app.get("/portfolio", response_class=HTMLResponse)
     async def portfolio(request: Request):

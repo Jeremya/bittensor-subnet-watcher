@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS subnet_registry (
     website    TEXT,
     github_url TEXT,
     x_handle   TEXT,
+    category   TEXT,
+    category_confirmed INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT
 );
 
@@ -75,9 +77,47 @@ CREATE TABLE IF NOT EXISTS portfolio_positions (
     PRIMARY KEY (coldkey, netuid)
 );
 
+CREATE TABLE IF NOT EXISTS analyst_watchlist (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    handle    TEXT NOT NULL UNIQUE,
+    added_at  TEXT NOT NULL,
+    source    TEXT NOT NULL DEFAULT 'dashboard'
+);
+
+CREATE TABLE IF NOT EXISTS analyst_mentions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    analyst_handle TEXT NOT NULL,
+    netuid         INTEGER NOT NULL,
+    tweet_url      TEXT NOT NULL,
+    tweet_text     TEXT,
+    mentioned_at   TEXT NOT NULL,
+    notified       INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (analyst_handle, netuid, tweet_url)
+);
+
+CREATE TABLE IF NOT EXISTS subnet_milestones (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    netuid         INTEGER NOT NULL,
+    milestone_type TEXT NOT NULL,
+    title          TEXT NOT NULL,
+    url            TEXT NOT NULL,
+    published_at   TEXT NOT NULL,
+    ai_summary     TEXT,
+    ai_take        TEXT,
+    notified       INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (netuid, url)
+);
+
+CREATE TABLE IF NOT EXISTS collector_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_snapshots_netuid_time ON snapshots (netuid, polled_at);
 CREATE INDEX IF NOT EXISTS idx_alerts_fired_at ON alerts (fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_dedup ON alerts (netuid, alert_type, fired_at);
+CREATE INDEX IF NOT EXISTS idx_analyst_mentions_netuid ON analyst_mentions (netuid, mentioned_at);
+CREATE INDEX IF NOT EXISTS idx_milestones_netuid ON subnet_milestones (netuid, published_at);
 """
 
 
@@ -124,6 +164,25 @@ async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
         )
     elif not has_quality and not has_health:
         await conn.execute("ALTER TABLE snapshots ADD COLUMN health_score REAL")
+
+    cursor = await conn.execute("PRAGMA table_info(subnet_registry)")
+    registry_cols = {row[1] for row in await cursor.fetchall()}
+    for col, definition in [
+        ("category", "TEXT"),
+        ("category_confirmed", "INTEGER NOT NULL DEFAULT 0"),
+    ]:
+        if col not in registry_cols:
+            await conn.execute(
+                f"ALTER TABLE subnet_registry ADD COLUMN {col} {definition}"
+            )
+
+    cursor = await conn.execute("PRAGMA table_info(subnet_milestones)")
+    milestone_cols = {row[1] for row in await cursor.fetchall()}
+    for col in ("ai_summary", "ai_take"):
+        if milestone_cols and col not in milestone_cols:
+            await conn.execute(
+                f"ALTER TABLE subnet_milestones ADD COLUMN {col} TEXT"
+            )
     await conn.commit()
     return conn
 
@@ -180,7 +239,8 @@ async def get_snapshots_for_netuid(db: aiosqlite.Connection,
 async def get_latest_snapshots_with_registry(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
     """Latest snapshot per netuid LEFT JOINed with subnet_registry. Ordered by composite_score DESC."""
     cursor = await db.execute("""
-        SELECT s.*, r.name, r.github_url, r.x_handle, r.website
+        SELECT s.*, r.name, r.github_url, r.x_handle, r.website,
+               r.category, r.category_confirmed
         FROM snapshots s
         INNER JOIN (
             SELECT netuid, MAX(polled_at) AS max_ts
@@ -243,7 +303,8 @@ async def get_subnet_detail(db: aiosqlite.Connection,
                              netuid: int) -> Optional[aiosqlite.Row]:
     """Latest snapshot for one netuid LEFT JOINed with subnet_registry."""
     cursor = await db.execute("""
-        SELECT s.*, r.name, r.github_url, r.x_handle, r.website
+        SELECT s.*, r.name, r.github_url, r.x_handle, r.website,
+               r.category, r.category_confirmed
         FROM snapshots s
         LEFT JOIN subnet_registry r ON s.netuid = r.netuid
         WHERE s.netuid = ?
@@ -405,3 +466,221 @@ async def get_staked_netuids(db: aiosqlite.Connection) -> set[int]:
     cursor = await db.execute("SELECT DISTINCT netuid FROM portfolio_positions")
     rows = await cursor.fetchall()
     return {row["netuid"] for row in rows}
+
+
+async def get_analyst_watchlist(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        "SELECT * FROM analyst_watchlist ORDER BY added_at DESC"
+    )
+    return await cursor.fetchall()
+
+
+async def add_analyst_handle(db: aiosqlite.Connection,
+                             handle: str,
+                             source: str = "dashboard") -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        """
+        INSERT OR IGNORE INTO analyst_watchlist (handle, added_at, source)
+        VALUES (?, ?, ?)
+        """,
+        (handle.lstrip("@"), now, source),
+    )
+    await db.commit()
+
+
+async def remove_analyst_handle(db: aiosqlite.Connection, handle: str) -> None:
+    await db.execute(
+        "DELETE FROM analyst_watchlist WHERE handle = ? AND source = 'dashboard'",
+        (handle.lstrip("@"),),
+    )
+    await db.commit()
+
+
+async def insert_analyst_mention(db: aiosqlite.Connection,
+                                 handle: str,
+                                 netuid: int,
+                                 tweet_url: str,
+                                 tweet_text: str,
+                                 mentioned_at: datetime) -> bool:
+    try:
+        await db.execute(
+            """
+            INSERT INTO analyst_mentions
+                (analyst_handle, netuid, tweet_url, tweet_text, mentioned_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (handle.lstrip("@"), netuid, tweet_url, tweet_text, mentioned_at.isoformat()),
+        )
+        await db.commit()
+        return True
+    except aiosqlite.IntegrityError:
+        return False
+
+
+async def get_unnotified_analyst_mentions(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        "SELECT * FROM analyst_mentions WHERE notified=0 ORDER BY mentioned_at ASC"
+    )
+    return await cursor.fetchall()
+
+
+async def mark_analyst_mentions_notified(db: aiosqlite.Connection,
+                                         ids: list[int]) -> None:
+    if not ids:
+        return
+    placeholders = ",".join("?" * len(ids))
+    await db.execute(
+        f"UPDATE analyst_mentions SET notified=1 WHERE id IN ({placeholders})",
+        ids,
+    )
+    await db.commit()
+
+
+async def get_analyst_mentions_for_netuid(db: aiosqlite.Connection,
+                                          netuid: int,
+                                          limit: int = 10) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        """
+        SELECT * FROM analyst_mentions
+        WHERE netuid=?
+        ORDER BY mentioned_at DESC LIMIT ?
+        """,
+        (netuid, limit),
+    )
+    return await cursor.fetchall()
+
+
+async def has_active_analyst_coverage(db: aiosqlite.Connection,
+                                      netuid: int,
+                                      decay_hours: int) -> bool:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=decay_hours)).isoformat()
+    cursor = await db.execute(
+        "SELECT COUNT(*) FROM analyst_mentions WHERE netuid=? AND mentioned_at > ?",
+        (netuid, cutoff),
+    )
+    row = await cursor.fetchone()
+    return row[0] > 0
+
+
+async def insert_milestone(db: aiosqlite.Connection,
+                           netuid: int,
+                           milestone_type: str,
+                           title: str,
+                           url: str,
+                           published_at: datetime,
+                           ai_summary: Optional[str] = None,
+                           ai_take: Optional[str] = None) -> bool:
+    try:
+        await db.execute(
+            """
+            INSERT INTO subnet_milestones
+                (netuid, milestone_type, title, url, published_at, ai_summary, ai_take)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (netuid, milestone_type, title, url, published_at.isoformat(), ai_summary, ai_take),
+        )
+        await db.commit()
+        return True
+    except aiosqlite.IntegrityError:
+        return False
+
+
+async def get_unnotified_milestones(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        "SELECT * FROM subnet_milestones WHERE notified=0 ORDER BY published_at ASC"
+    )
+    return await cursor.fetchall()
+
+
+async def mark_milestones_notified(db: aiosqlite.Connection,
+                                   ids: list[int]) -> None:
+    if not ids:
+        return
+    placeholders = ",".join("?" * len(ids))
+    await db.execute(
+        f"UPDATE subnet_milestones SET notified=1 WHERE id IN ({placeholders})",
+        ids,
+    )
+    await db.commit()
+
+
+async def get_milestones_for_netuid(db: aiosqlite.Connection,
+                                    netuid: int,
+                                    limit: int = 10) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        """
+        SELECT * FROM subnet_milestones
+        WHERE netuid=?
+        ORDER BY published_at DESC LIMIT ?
+        """,
+        (netuid, limit),
+    )
+    return await cursor.fetchall()
+
+
+async def get_collector_state(db: aiosqlite.Connection, key: str) -> Optional[str]:
+    cursor = await db.execute(
+        "SELECT value FROM collector_state WHERE key=?",
+        (key,),
+    )
+    row = await cursor.fetchone()
+    return row[0] if row else None
+
+
+async def set_collector_state(db: aiosqlite.Connection, key: str, value: str) -> None:
+    await db.execute(
+        """
+        INSERT INTO collector_state (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value
+        """,
+        (key, value),
+    )
+    await db.commit()
+
+
+async def update_registry_category(db: aiosqlite.Connection,
+                                   netuid: int,
+                                   category: str,
+                                   confirmed: bool = False) -> None:
+    if confirmed:
+        await db.execute(
+            """
+            UPDATE subnet_registry
+            SET category=?, category_confirmed=1
+            WHERE netuid=?
+            """,
+            (category, netuid),
+        )
+    else:
+        await db.execute(
+            """
+            UPDATE subnet_registry
+            SET category=?
+            WHERE netuid=? AND (category_confirmed IS NULL OR category_confirmed=0)
+            """,
+            (category, netuid),
+        )
+    await db.commit()
+
+
+async def get_recent_alert_types_per_netuid(db: aiosqlite.Connection,
+                                            alert_types: list[str],
+                                            hours: int) -> dict[int, set[str]]:
+    if not alert_types:
+        return {}
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    placeholders = ",".join("?" * len(alert_types))
+    cursor = await db.execute(
+        f"""
+        SELECT netuid, alert_type
+        FROM alerts
+        WHERE alert_type IN ({placeholders}) AND fired_at > ?
+        """,
+        (*alert_types, cutoff),
+    )
+    rows = await cursor.fetchall()
+    result: dict[int, set[str]] = {}
+    for row in rows:
+        result.setdefault(row["netuid"], set()).add(row["alert_type"])
+    return result

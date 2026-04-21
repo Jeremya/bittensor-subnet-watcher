@@ -382,3 +382,177 @@ async def evaluate_alerts(
                             alert.current_value, alert.threshold)
 
     return fired
+
+
+_CONVERGENCE_SIGNAL_TYPES = [
+    "milestone",
+    "analyst_mention",
+    "whale_inflow",
+    "github_spike",
+]
+
+
+def _count_convergence_signals(signals_by_netuid: dict[int, set[str]],
+                               min_signals: int) -> dict[int, set[str]]:
+    return {
+        netuid: signal_types
+        for netuid, signal_types in signals_by_netuid.items()
+        if len(signal_types) >= min_signals
+    }
+
+
+async def fire_analyst_alerts(
+    db: aiosqlite.Connection,
+    registry: dict,
+) -> list[AlertRecord]:
+    from db.database import (
+        get_unnotified_analyst_mentions,
+        mark_analyst_mentions_notified,
+    )
+
+    rows = await get_unnotified_analyst_mentions(db)
+    fired: list[AlertRecord] = []
+    notified_ids: list[int] = []
+
+    for row in rows:
+        netuid = row["netuid"]
+        handle = row["analyst_handle"]
+        tweet_text = row["tweet_text"] or ""
+        text_preview = tweet_text[:120]
+        if len(tweet_text) > 120:
+            text_preview += "…"
+
+        alert = AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=netuid,
+            subnet_name=_registry_name(registry, netuid),
+            alert_type="analyst_mention",
+            description=(
+                f"@{handle} mentioned {_registry_name(registry, netuid)}: "
+                f"\"{text_preview}\"\n→ {row['tweet_url']}"
+            ),
+            current_value=None,
+            threshold=None,
+        )
+        in_cooldown = await is_alert_in_cooldown(
+            db,
+            netuid,
+            "analyst_mention",
+            config.ALERT_COOLDOWN_HOURS,
+        )
+        if not in_cooldown:
+            await insert_alert(db, alert)
+            fired.append(alert)
+            logger.info("[ALERT] analyst_mention netuid=%d handle=%s", netuid, handle)
+        notified_ids.append(row["id"])
+
+    await mark_analyst_mentions_notified(db, notified_ids)
+    return fired
+
+
+async def fire_milestone_alerts(
+    db: aiosqlite.Connection,
+    registry: dict,
+) -> list[AlertRecord]:
+    from db.database import get_unnotified_milestones, mark_milestones_notified
+
+    rows = await get_unnotified_milestones(db)
+    fired: list[AlertRecord] = []
+    notified_ids: list[int] = []
+
+    for row in rows:
+        netuid = row["netuid"]
+        subnet_name = _registry_name(registry, netuid)
+        type_emoji = "🔬" if row["milestone_type"] == "arxiv" else "🤗"
+
+        desc_parts = [
+            f"{type_emoji} {subnet_name} — new {row['milestone_type']}: {row['title']}",
+        ]
+        if row["ai_summary"]:
+            desc_parts.append(f"Summary: {row['ai_summary']}")
+        if row["ai_take"]:
+            desc_parts.append(f"Take: {row['ai_take']}")
+        desc_parts.append(f"→ {row['url']}")
+
+        alert = AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=netuid,
+            subnet_name=subnet_name,
+            alert_type="milestone",
+            description="\n".join(desc_parts),
+            current_value=None,
+            threshold=None,
+        )
+        in_cooldown = await is_alert_in_cooldown(
+            db,
+            netuid,
+            "milestone",
+            config.ALERT_COOLDOWN_HOURS,
+        )
+        if not in_cooldown:
+            await insert_alert(db, alert)
+            fired.append(alert)
+            logger.info(
+                "[ALERT] milestone netuid=%d type=%s title=%r",
+                netuid,
+                row["milestone_type"],
+                row["title"],
+            )
+        notified_ids.append(row["id"])
+
+    await mark_milestones_notified(db, notified_ids)
+    return fired
+
+
+async def evaluate_convergence(
+    db: aiosqlite.Connection,
+    registry: dict,
+) -> list[AlertRecord]:
+    from db.database import get_recent_alert_types_per_netuid
+
+    signals_by_netuid = await get_recent_alert_types_per_netuid(
+        db,
+        _CONVERGENCE_SIGNAL_TYPES,
+        config.CONVERGENCE_SIGNAL_WINDOW_HOURS,
+    )
+    triggered = _count_convergence_signals(
+        signals_by_netuid,
+        config.CONVERGENCE_MIN_SIGNALS,
+    )
+
+    fired: list[AlertRecord] = []
+    for netuid, signal_types in triggered.items():
+        in_cooldown = await is_alert_in_cooldown(
+            db,
+            netuid,
+            "convergence",
+            config.CONVERGENCE_COOLDOWN_HOURS,
+        )
+        if in_cooldown:
+            continue
+
+        subnet_name = _registry_name(registry, netuid)
+        type_lines = "\n".join(f"  • {signal_type}" for signal_type in sorted(signal_types))
+        alert = AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=netuid,
+            subnet_name=subnet_name,
+            alert_type="convergence",
+            description=(
+                f"HIGH CONVICTION — {subnet_name}\n"
+                f"{len(signal_types)} signals converged in "
+                f"{config.CONVERGENCE_SIGNAL_WINDOW_HOURS}h:\n"
+                f"{type_lines}"
+            ),
+            current_value=float(len(signal_types)),
+            threshold=float(config.CONVERGENCE_MIN_SIGNALS),
+        )
+        await insert_alert(db, alert)
+        fired.append(alert)
+        logger.info(
+            "[ALERT] convergence netuid=%d signals=%s",
+            netuid,
+            sorted(signal_types),
+        )
+
+    return fired

@@ -325,6 +325,51 @@
       {% endif %}
     </div>
 
+    {% if milestones %}
+    <div class="card full-width" style="margin-top:16px">
+      <h3>Milestones</h3>
+      {% for m in milestones %}
+      <div class="alert-item">
+        <div class="alert-type">
+          {{ "🔬 arXiv" if m.milestone_type == "arxiv" else "🤗 HuggingFace" }}
+        </div>
+        <div class="alert-desc"><a href="{{ m.url }}" target="_blank" style="color:#00d4aa">{{ m.title }}</a></div>
+        {% if m.ai_summary %}<div class="alert-desc" style="color:#888;margin-top:4px">{{ m.ai_summary }}</div>{% endif %}
+        {% if m.ai_take %}<div class="alert-desc" style="color:#00bcd4;margin-top:2px"><em>Take: {{ m.ai_take }}</em></div>{% endif %}
+        <div class="alert-time">{{ m.published_at[:10] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if analyst_mentions %}
+    <div class="card full-width" style="margin-top:16px">
+      <h3>Analyst Mentions</h3>
+      {% for m in analyst_mentions %}
+      <div class="alert-item">
+        <div class="alert-type">📡 @{{ m.analyst_handle }}</div>
+        <div class="alert-desc">{{ (m.tweet_text or "")[:200] }}{% if (m.tweet_text or "")|length > 200 %}…{% endif %}</div>
+        <div class="alert-time"><a href="{{ m.tweet_url }}" target="_blank" style="color:#555">{{ m.mentioned_at[:16] }} UTC →</a></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card full-width" style="margin-top:16px">
+      <h3>Category</h3>
+      <form method="post" action="/subnet/{{ snap.netuid }}/category" style="display:flex;gap:8px;align-items:center">
+        <select name="category" style="background:#111;border:1px solid #333;color:#e0e0e0;padding:5px 8px;font-family:monospace;font-size:0.82rem;border-radius:3px">
+          {% for cat in ["AI Training","Post-Training/RLHF","Data / Retrieval","Quant / Finance","Privacy / Compute","Biomedical","Infrastructure","Other"] %}
+          <option value="{{ cat }}" {% if snap.category == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" style="background:#1a1a2e;border:1px solid #00d4aa;color:#00d4aa;padding:5px 12px;font-family:monospace;font-size:0.82rem;cursor:pointer;border-radius:3px">
+          {% if snap.category_confirmed %}Update{% else %}Confirm{% endif %}
+        </button>
+        {% if snap.category_confirmed %}<span style="color:#444;font-size:0.72rem">✓ confirmed</span>{% else %}<span style="color:#333;font-size:0.72rem">auto-suggested</span>{% endif %}
+      </form>
+    </div>
+
   </div>
 </div>
 </body>

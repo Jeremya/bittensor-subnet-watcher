@@ -3,7 +3,16 @@ import pytest
 import aiosqlite
 from httpx import AsyncClient, ASGITransport
 from datetime import datetime, timezone
-from db.database import SCHEMA_SQL, insert_snapshot, insert_alert, upsert_registry_entry
+from db.database import (
+    SCHEMA_SQL,
+    add_analyst_handle,
+    insert_alert,
+    insert_analyst_mention,
+    insert_milestone,
+    insert_snapshot,
+    update_registry_category,
+    upsert_registry_entry,
+)
 from models import SubnetSnapshot, AlertRecord
 
 
@@ -109,3 +118,132 @@ async def test_subnet_detail_returns_404_for_unknown(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/subnet/9999")
     assert resp.status_code == 404
+
+
+async def test_analysts_page_lists_config_and_db_handles(app, db):
+    await add_analyst_handle(db, "db_added")
+    import web.routes as routes
+
+    original_handles = routes.config.ANALYST_HANDLES
+    routes.config.ANALYST_HANDLES = ["config_added"]
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/analysts")
+    finally:
+        routes.config.ANALYST_HANDLES = original_handles
+
+    assert resp.status_code == 200
+    assert "@config_added" in resp.text
+    assert "@db_added" in resp.text
+
+
+async def test_analysts_add_and_remove_round_trip(app, db):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        add_resp = await client.post("/analysts/add", data={"handle": "@new_handle"})
+        remove_resp = await client.post("/analysts/remove/new_handle")
+        page = await client.get("/analysts")
+
+    assert add_resp.status_code == 303
+    assert remove_resp.status_code == 303
+    assert "@new_handle" not in page.text
+
+
+async def test_dashboard_shows_category_and_coverage_badges(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(
+        db,
+        SubnetSnapshot(
+            netuid=3,
+            polled_at=now,
+            composite_score=85.0,
+            alpha_mcap_tao=5_000.0,
+        ),
+    )
+    await upsert_registry_entry(db, 3, "Templar", None, None, None)
+    await update_registry_category(db, 3, "AI Training", confirmed=True)
+    await insert_analyst_mention(
+        db,
+        "0xai_dev",
+        3,
+        "https://x.com/0xai_dev/status/1",
+        "SN3 is moving",
+        now,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/")
+
+    assert resp.status_code == 200
+    assert "AI Training" in resp.text
+    assert "📡" in resp.text
+    assert "/analysts" in resp.text
+
+
+async def test_subnet_detail_shows_milestones_mentions_and_category_form(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(
+        db,
+        SubnetSnapshot(
+            netuid=5,
+            polled_at=now,
+            composite_score=72.0,
+            emission_rank=3,
+            alpha_mcap_tao=1_000.0,
+        ),
+    )
+    await upsert_registry_entry(db, 5, "Templar", None, None, None)
+    await insert_milestone(
+        db,
+        5,
+        "arxiv",
+        "SparseLoCo",
+        "https://arxiv.org/abs/2603.08163",
+        now,
+        ai_summary="summary",
+        ai_take="take",
+    )
+    await insert_analyst_mention(
+        db,
+        "0xai_dev",
+        5,
+        "https://x.com/0xai_dev/status/2",
+        "Templar shipped a model",
+        now,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/subnet/5")
+
+    assert resp.status_code == 200
+    assert "Milestones" in resp.text
+    assert "Analyst Mentions" in resp.text
+    assert "SparseLoCo" in resp.text
+    assert "summary" in resp.text
+    assert "Templar shipped a model" in resp.text
+    assert "/subnet/5/category" in resp.text
+
+
+async def test_subnet_category_post_updates_registry(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(
+        db,
+        SubnetSnapshot(
+            netuid=5,
+            polled_at=now,
+            composite_score=72.0,
+            emission_rank=3,
+            alpha_mcap_tao=1_000.0,
+        ),
+    )
+    await upsert_registry_entry(db, 5, "Templar", None, None, None)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post("/subnet/5/category", data={"category": "AI Training"})
+
+    cursor = await db.execute(
+        "SELECT category, category_confirmed FROM subnet_registry WHERE netuid=5"
+    )
+    row = await cursor.fetchone()
+    assert resp.status_code == 303
+    assert row["category"] == "AI Training"
+    assert row["category_confirmed"] == 1
