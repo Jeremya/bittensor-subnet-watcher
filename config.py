@@ -61,6 +61,22 @@ BLOCKS_PER_DAY: int = 7200
 X_SCRAPE_MAX_PER_CYCLE: int = 30            # max subnets per XCollector run
 X_SCRAPE_DELAY_SECONDS: float = 2.0         # delay between X scrapes
 
+# ── Analyst tracking ──────────────────────────────────────────────────────────
+ANALYST_HANDLES: list[str] = [
+    h.strip() for h in os.getenv("ANALYST_HANDLES", "").split(",") if h.strip()
+]
+ANALYST_TWEET_LOOKBACK_HOURS: int = 25   # slightly > poll interval to avoid gaps
+ANALYST_COVERAGE_DECAY_HOURS: int = 72   # coverage badge visible for 72h after mention
+
+# ── AI Signal Interpreter ──────────────────────────────────────────────────────
+ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+AI_INTERPRETER_MODEL: str = "claude-haiku-4-5-20251001"
+
+# ── Signal Convergence ────────────────────────────────────────────────────────
+CONVERGENCE_SIGNAL_WINDOW_HOURS: int = 24   # look back this many hours for signal grouping
+CONVERGENCE_MIN_SIGNALS: int = 2            # distinct signal types needed to fire
+CONVERGENCE_COOLDOWN_HOURS: int = 48        # separate cooldown from standard 6h
+
 
 def validate_config() -> None:
     """Fail fast at startup if required env vars are missing."""
