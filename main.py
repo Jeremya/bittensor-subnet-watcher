@@ -212,29 +212,6 @@ async def poll_cycle() -> None:
                 cycle_id, duration, len(chain_snapshots))
 
 
-async def _flush_typed_alerts(alert_type: str) -> None:
-    """Send any unsent alerts of a specific type via Telegram and mark them sent."""
-    if not _telegram:
-        return
-    unsent = await get_unsent_alerts(_db)
-    typed = [row for row in unsent if row["alert_type"] == alert_type]
-    if not typed:
-        return
-    from models import AlertRecord as AR
-    ids = [row["id"] for row in typed]
-    objs = [AR(
-        fired_at=datetime.fromisoformat(row["fired_at"]),
-        netuid=row["netuid"],
-        subnet_name=row["subnet_name"],
-        alert_type=row["alert_type"],
-        description=row["description"],
-        current_value=row["current_value"],
-        threshold=row["threshold"],
-    ) for row in typed]
-    sent_ids = await _telegram.send_alerts(objs, ids)
-    await mark_alerts_sent(_db, sent_ids)
-
-
 async def github_collect() -> None:
     """60-min GitHub data refresh. Updates snapshots and registry categories in DB."""
     registry = await get_registry(_db)
@@ -256,7 +233,6 @@ async def analyst_collect() -> None:
     registry = await get_registry(_db)
     await AnalystCollector.collect(_db, registry)
     new_alerts = await fire_analyst_alerts(_db, registry)
-    await _flush_typed_alerts("analyst_mention")
     logger.info("[COLLECTOR] analyst_collect done new_alerts=%d", len(new_alerts))
 
 
@@ -265,7 +241,6 @@ async def milestone_collect() -> None:
     registry = await get_registry(_db)
     await MilestoneCollector.collect(_db, registry)
     new_alerts = await fire_milestone_alerts(_db, registry)
-    await _flush_typed_alerts("milestone")
     logger.info("[COLLECTOR] milestone_collect done new_alerts=%d", len(new_alerts))
 
 

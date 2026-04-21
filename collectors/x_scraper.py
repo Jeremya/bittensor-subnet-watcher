@@ -24,22 +24,31 @@ def _row_value(row, key: str):
         return getattr(row, key, None)
 
 
+_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+
+
 async def get_browser_page() -> Page:
-    """Get or create a headless Chromium page."""
+    """Get or create a headless Chromium page. Restarts browser on crash."""
     global _playwright, _browser
-    if _browser is None:
-        _playwright = await asyncio.wait_for(async_playwright().start(), timeout=30)
-        _browser = await asyncio.wait_for(
-            _playwright.chromium.launch(headless=True), timeout=30
-        )
-    context = await _browser.new_context(
-        user_agent=(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        )
-    )
-    return await context.new_page()
+    for attempt in range(2):
+        try:
+            if _browser is None:
+                _playwright = await asyncio.wait_for(async_playwright().start(), timeout=30)
+                _browser = await asyncio.wait_for(
+                    _playwright.chromium.launch(headless=True), timeout=30
+                )
+            context = await _browser.new_context(user_agent=_UA)
+            return await context.new_page()
+        except Exception:
+            if attempt == 0:
+                logger.warning("[BROWSER] crash detected, restarting")
+                _browser = None
+                continue
+            raise
 
 
 async def close_browser() -> None:

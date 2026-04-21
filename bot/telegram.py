@@ -15,6 +15,9 @@ ALERT_TYPE_EMOJI = {
     "github_spike": "🚀",
     "social_silence": "🤫",
     "new_entry": "✨",
+    "analyst_mention": "📡",
+    "milestone":       "🔬",
+    "convergence":     "🚨",
 }
 
 
