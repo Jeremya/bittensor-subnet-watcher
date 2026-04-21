@@ -8,13 +8,15 @@
 
 ## Overview
 
-Three self-contained additions:
+Five self-contained additions:
 
 1. **Analyst Collector** — hourly scrape of watchlist analyst X accounts; detects subnet mentions; fires Telegram alert + dashboard coverage badge
 2. **Milestone Collector** — 6-hourly poll of arXiv and HuggingFace for subnet-linked publications; fires Telegram alert; provides the leading signal before analyst coverage
 3. **Subnet Categories** — sector labels auto-suggested from GitHub README, confirmed/overridden in dashboard; leaderboard gains a category filter sidebar
+4. **AI Signal Interpreter** — when a milestone is detected, calls Claude API to generate a plain-English summary + investment take; stored alongside the milestone row; shown in dashboard and Telegram alert
+5. **Signal Convergence detector** — fires a high-conviction "Pump Lab" alert when 2+ independent signals (milestone, analyst mention, whale inflow, emission spike) hit the same subnet within a rolling 24h window
 
-Together: paper drops → milestone alert → analyst writes about it → analyst alert + coverage badge → you act before the market prices it in.
+Together: paper drops → milestone alert + AI take → analyst writes about it → analyst alert + coverage badge → convergence fires if whale inflow also present → you act before the market prices it in.
 
 ---
 
@@ -23,18 +25,21 @@ Together: paper drops → milestone alert → analyst writes about it → analys
 ```
 main.py (scheduler)
   ├── every 15 min  → ChainCollector + scorer + alerts (unchanged)
+  │                    alerts gains: check_convergence() (NEW)
   ├── every 60 min  → GitHubCollector (gains: category auto-suggest on README fetch)
   ├── every 60 min  → AnalystCollector (NEW)
   ├── every 6 hours → MilestoneCollector (NEW)
+  │                    on new milestone: calls Claude API → stores ai_summary + ai_take
   └── best-effort   → XCollector (unchanged)
 
 alerts.py
   ├── check_analyst_mention()  (NEW)
-  └── check_milestone()        (NEW)
+  ├── check_milestone()        (NEW) — includes AI take in Telegram message
+  └── check_convergence()      (NEW) — fires when 2+ signals hit same subnet in 24h
 
 dashboard
   ├── leaderboard: coverage badge + category label + category filter sidebar
-  ├── subnet detail: milestone timeline + analyst mentions feed
+  ├── subnet detail: milestone timeline (with AI summaries) + analyst mentions feed
   └── GET/POST /analysts: manage watchlist handles
 ```
 
@@ -208,6 +213,102 @@ After fetching README text, run keyword scan (case-insensitive). First category 
 
 ---
 
+## Feature 4: AI Signal Interpreter
+
+Runs inside `MilestoneCollector` immediately after a new milestone row is inserted. Uses the Claude API (claude-haiku-4-5 for cost efficiency — fast, cheap, adequate for structured summaries).
+
+### DB Changes
+
+```sql
+ALTER TABLE subnet_milestones ADD COLUMN ai_summary TEXT;   -- 1-2 sentence plain-English description
+ALTER TABLE subnet_milestones ADD COLUMN ai_take TEXT;      -- 1 sentence investment implication
+```
+
+### Prompt Design
+
+```
+You are a Bittensor investment analyst. Given a new publication from a Bittensor subnet team,
+write two things:
+1. SUMMARY: 1-2 sentences explaining what was built or published, in plain English for a
+   non-technical investor.
+2. TAKE: 1 sentence on what this means for the subnet's investment thesis (positive/neutral/negative
+   and why).
+
+Subnet: {subnet_name} (SN{netuid})
+Publication type: {milestone_type}  (arxiv | huggingface)
+Title: {title}
+URL: {url}
+
+Reply in JSON: {{"summary": "...", "take": "..."}}
+```
+
+### Failure Handling
+
+- If Claude API call fails or returns malformed JSON: log warning, leave `ai_summary` and `ai_take` as NULL. Milestone is still stored and alerted — AI gloss is best-effort.
+- `ANTHROPIC_API_KEY` added to `.env.example` as optional. If not set, skip AI interpretation silently.
+
+### Telegram Alert With AI Take
+
+```
+🔬 SN3 (Templar) — new arXiv paper
+"SparseLoCo: Gradient Compression for Decentralized LLM Training"
+
+Summary: The Templar team published a gradient compression technique that reduces
+communication overhead by 146x, enabling more miners to participate in training runs.
+
+Take: Strong technical signal — this is the core IP behind Covenant-72B and validates
+the subnet's long-term defensibility.
+
+→ https://arxiv.org/abs/2603.08163
+```
+
+### Config
+
+```python
+ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+AI_INTERPRETER_MODEL: str = "claude-haiku-4-5-20251001"
+```
+
+---
+
+## Feature 5: Signal Convergence Detector
+
+Runs inside `alerts.py` at the end of each 15-min poll cycle (same cadence as existing alert checks). Looks back 24h and counts how many *independent* signal types fired for each subnet.
+
+### Signal Types Tracked
+
+| Signal type | Source |
+|---|---|
+| `milestone` | `subnet_milestones` — new arXiv or HF entry |
+| `analyst_mention` | `analyst_mentions` — new KOL tweet match |
+| `whale_inflow` | existing `tao_outflow` / `whale_inflow` alerts |
+| `emission_spike` | existing `emission_drop` alert (inverse: spike upward) |
+| `github_spike` | existing `github_spike` alert |
+
+### Trigger Rule
+
+Fire a convergence alert when **2 or more distinct signal types** appear for the same `netuid` within a rolling 24h window, **and** no convergence alert has fired for that subnet in the past 48h (separate cooldown from individual alerts).
+
+Stored in `alerts` table with `alert_type = 'convergence'` — reuses existing schema.
+
+### Alert Format
+
+```
+🚨 HIGH CONVICTION — SN3 (Templar)
+3 signals converged in 24h:
+  🔬 arXiv paper published
+  📡 @0xai_dev mentioned it (KOL)
+  🐋 Whale inflow >5% of pool
+
+This is the cognitive-lag window. Price hasn't moved yet.
+```
+
+### Why Not Score-Based
+
+A numeric convergence score would require calibration. A simple count of distinct signal types is transparent, debuggable, and matches how you'd reason about it manually: "two things fired at once = worth paying attention."
+
+---
+
 ## Error Handling & Failure Modes
 
 - **Analyst scrape fails** (Playwright timeout, X login wall): log warning, skip handle, continue. Same pattern as `XCollector`.
@@ -223,13 +324,17 @@ After fetching README text, run keyword scan (case-insensitive). First category 
 - `test_analyst_matching.py` — unit tests for subnet name + SN-pattern regex against sample tweet texts
 - `test_category_suggest.py` — unit tests for keyword scan against sample README excerpts
 - `test_milestone_dedup.py` — verify UNIQUE constraint on URL suppresses duplicate rows
-- Integration: existing `pytest.ini` pattern; no live network calls in tests (mock arXiv/HF responses)
+- `test_convergence.py` — unit tests for signal count logic: 0/1/2/3 signal types, cooldown window, distinct-type deduplication
+- `test_ai_interpreter.py` — mock Claude API response; verify JSON parsing + NULL fallback on malformed response
+- Integration: existing `pytest.ini` pattern; no live network calls in tests (mock arXiv/HF/Claude responses)
 
 ---
 
 ## Out of Scope
 
+- Discord scanning — scraping Discord without a bot token is not feasible
 - Sentiment scoring of analyst tweets (positive/negative) — too noisy, not planned
 - Tracking analyst follower growth over time — informational only, not needed
 - Paid HuggingFace or arXiv APIs
 - Auto-mapping subnet names to HuggingFace org slugs — search by name is sufficient
+- Heat scoring KOL mentions by follower count — boolean coverage is sufficient for now
