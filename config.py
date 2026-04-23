@@ -78,6 +78,15 @@ CONVERGENCE_SIGNAL_WINDOW_HOURS: int = 24   # look back this many hours for sign
 CONVERGENCE_MIN_SIGNALS: int = 2            # distinct signal types needed to fire
 CONVERGENCE_COOLDOWN_HOURS: int = 48        # separate cooldown from standard 6h
 
+# ── Portfolio recommendations ────────────────────────────────────────────────
+PORTFOLIO_RECOMMENDATION_WINDOW_HOURS: int = 168   # 1 week
+PORTFOLIO_TRIM_MAX_ALLOC_PCT: float = 0.25         # >25% single-name concentration
+PORTFOLIO_CATEGORY_MAX_ALLOC_PCT: float = 0.45     # >45% category concentration blocks new adds
+PORTFOLIO_ADD_MIN_SCORE: float = 75.0
+PORTFOLIO_NEW_BUY_MIN_SCORE: float = 78.0
+PORTFOLIO_REPLACE_SCORE_MARGIN: float = 8.0
+PORTFOLIO_HOLD_FLOOR_SCORE: float = 55.0
+
 
 def validate_config() -> None:
     """Fail fast at startup if required env vars are missing."""

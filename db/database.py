@@ -449,7 +449,7 @@ async def delete_gone_positions(db: aiosqlite.Connection,
 async def get_portfolio_positions(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
     """All positions LEFT JOINed with subnet_registry, ordered by coldkey then netuid."""
     cursor = await db.execute("""
-        SELECT p.*, r.name, s.tao_usd_price
+        SELECT p.*, r.name, r.category, s.tao_usd_price
         FROM portfolio_positions p
         LEFT JOIN subnet_registry r ON p.netuid = r.netuid
         LEFT JOIN (
@@ -464,6 +464,28 @@ async def get_portfolio_positions(db: aiosqlite.Connection) -> list[aiosqlite.Ro
 async def get_staked_netuids(db: aiosqlite.Connection) -> set[int]:
     """Return set of netuids with any active portfolio position."""
     cursor = await db.execute("SELECT DISTINCT netuid FROM portfolio_positions")
+    rows = await cursor.fetchall()
+    return {row["netuid"] for row in rows}
+
+
+async def get_active_analyst_coverage_netuids(db: aiosqlite.Connection,
+                                              decay_hours: int) -> set[int]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=decay_hours)).isoformat()
+    cursor = await db.execute(
+        "SELECT DISTINCT netuid FROM analyst_mentions WHERE mentioned_at > ?",
+        (cutoff,),
+    )
+    rows = await cursor.fetchall()
+    return {row["netuid"] for row in rows}
+
+
+async def get_recent_milestone_netuids(db: aiosqlite.Connection,
+                                       hours: int) -> set[int]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    cursor = await db.execute(
+        "SELECT DISTINCT netuid FROM subnet_milestones WHERE published_at > ?",
+        (cutoff,),
+    )
     rows = await cursor.fetchall()
     return {row["netuid"] for row in rows}
 

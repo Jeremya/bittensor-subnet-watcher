@@ -1,8 +1,11 @@
 import pytest
 import aiosqlite
+from datetime import datetime, timezone, timedelta
 from db.database import (
     init_db, upsert_portfolio_position, delete_gone_positions,
-    get_portfolio_positions, get_staked_netuids,
+    get_portfolio_positions, get_staked_netuids, upsert_registry_entry,
+    insert_analyst_mention, insert_milestone,
+    get_active_analyst_coverage_netuids, get_recent_milestone_netuids,
 )
 
 
@@ -92,3 +95,49 @@ async def test_get_staked_netuids(db):
 async def test_get_staked_netuids_empty(db):
     netuids = await get_staked_netuids(db)
     assert netuids == set()
+
+
+@pytest.mark.asyncio
+async def test_get_active_analyst_coverage_netuids_respects_decay_window(db):
+    now = datetime.now(timezone.utc)
+    await insert_analyst_mention(
+        db, "0xai_dev", 3, "https://x.com/0xai_dev/status/1",
+        "SN3 is moving", now - timedelta(hours=4)
+    )
+    await insert_analyst_mention(
+        db, "0xai_dev", 8, "https://x.com/0xai_dev/status/2",
+        "SN8 is stale", now - timedelta(hours=96)
+    )
+
+    result = await get_active_analyst_coverage_netuids(db, decay_hours=72)
+    assert result == {3}
+
+
+@pytest.mark.asyncio
+async def test_get_recent_milestone_netuids_filters_old_rows(db):
+    now = datetime.now(timezone.utc)
+    await insert_milestone(
+        db, 14, "arxiv", "Recent Paper",
+        "https://arxiv.org/abs/2604.00001", now - timedelta(days=2)
+    )
+    await insert_milestone(
+        db, 9, "arxiv", "Old Paper",
+        "https://arxiv.org/abs/2603.00002", now - timedelta(days=12)
+    )
+
+    result = await get_recent_milestone_netuids(db, hours=168)
+    assert result == {14}
+
+
+@pytest.mark.asyncio
+async def test_get_portfolio_positions_includes_category(db):
+    await upsert_registry_entry(db, 3, "Templar", None, None)
+    await upsert_portfolio_position(db, "ck1", 3, 100.0, 5.0)
+    await db.execute(
+        "UPDATE subnet_registry SET category=? WHERE netuid=?",
+        ("AI Training", 3),
+    )
+    await db.commit()
+
+    rows = await get_portfolio_positions(db)
+    assert rows[0]["category"] == "AI Training"
