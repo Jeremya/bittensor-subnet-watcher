@@ -197,22 +197,19 @@ def test_score_snapshots_sets_composite():
 
 
 def test_score_snapshots_weight_renormalization():
-    """When momentum_score is None, composite uses renormalized yield+health weights."""
+    """When history is missing, swing score uses available value/tradability components."""
     snap = make_snap(
         1,
         daily_emission_tao=50.0,
         alpha_mcap_usd=5_000_000,
         tao_usd_price=300.0,
         gh_last_push=datetime.now(timezone.utc) - timedelta(days=5),
-        # No history → momentum_score will be None
+        # No history → flow component is unavailable.
     )
     score_snapshots([snap], history_by_netuid={})
-    assert snap.momentum_score is None
     assert snap.yield_score is not None
-    assert snap.health_score is not None
-    w_y, w_h = config.YIELD_WEIGHT, config.HEALTH_WEIGHT
-    expected = (snap.yield_score * w_y + snap.health_score * w_h) / (w_y + w_h)
-    assert snap.composite_score == pytest.approx(expected, rel=0.01)
+    assert snap.momentum_score == snap.composite_score
+    assert snap.composite_score == pytest.approx(snap.yield_score, rel=0.01)
 
 
 def test_hype_score_not_included_in_composite():
@@ -262,3 +259,34 @@ def test_hype_score_stale_tweet_no_bonus():
     snap = make_snap(1, x_followers=1000, x_last_tweet=datetime.now(timezone.utc) - timedelta(days=60))
     score = compute_hype_score(snap, max_followers=10000)
     assert score == pytest.approx(6.0)   # 1000/10000 * 60 = 6, tweet >30d = 0
+
+
+def test_score_snapshots_composite_is_swing_score_from_flow_value_and_tradability():
+    now = datetime.now(timezone.utc)
+    snap = make_snap(
+        1,
+        daily_emission_tao=50.0,
+        alpha_mcap_usd=500_000.0,
+        tao_usd_price=300.0,
+        alpha_mcap_tao=1_000.0,
+        tao_in_tao=1_000.0,
+        volume_24h_alpha=50_000.0,
+        alpha_price_tao=0.002,
+        emission_rank=4,
+    )
+    hist = [
+        make_snap(
+            1,
+            alpha_mcap_tao=1_000.0,
+            tao_in_tao=1_000.0,
+            net_tao_flow_tao=30.0,
+            emission_rank=8,
+        )
+    ]
+    hist[0].polled_at = now - timedelta(hours=4)
+
+    score_snapshots([snap], history_by_netuid={1: hist})
+
+    assert snap.composite_score is not None
+    assert snap.composite_score > 60.0
+    assert snap.momentum_score == snap.composite_score

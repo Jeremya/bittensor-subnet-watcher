@@ -141,6 +141,13 @@ def _has_positive_catalyst(snapshot: dict[str, Any],
     )
 
 
+def _has_positive_confirmation(snapshot: dict[str, Any],
+                               alert_types: set[str],
+                               covered: bool,
+                               has_milestone: bool) -> bool:
+    return _has_positive_catalyst(snapshot, alert_types, covered, has_milestone)
+
+
 def _has_thesis_break(snapshot: dict[str, Any], alert_types: set[str]) -> bool:
     if SEVERE_SELL_ALERTS & alert_types:
         return True
@@ -223,7 +230,7 @@ def build_portfolio_recommendations(
             "momentum_score": None,
         })
         alert_types = alert_types_by_netuid.get(netuid, set())
-        catalyst = _has_positive_catalyst(
+        catalyst = _has_positive_confirmation(
             snapshot,
             alert_types,
             netuid in coverage_netuids,
@@ -274,6 +281,24 @@ def build_portfolio_recommendations(
             portfolio_actions.append(card)
             continue
 
+        if (
+            score < config.PORTFOLIO_HOLD_FLOOR_SCORE
+            and (
+                "tao_outflow" in alert_types
+                or (snapshot.get("momentum_score") or 0.0) < 40.0
+            )
+        ):
+            card = _card(
+                snapshot,
+                "trim",
+                "medium",
+                ["swing score deteriorating with outflow risk"],
+                position["allocation_pct"],
+            )
+            table_actions[netuid] = card
+            portfolio_actions.append(card)
+            continue
+
         table_actions[netuid] = _card(
             snapshot,
             "hold",
@@ -308,7 +333,7 @@ def build_portfolio_recommendations(
         if category_allocations[category] >= config.PORTFOLIO_CATEGORY_MAX_ALLOC_PCT:
             continue
 
-        catalyst = _has_positive_catalyst(
+        catalyst = _has_positive_confirmation(
             snapshot,
             alert_types,
             netuid in coverage_netuids,

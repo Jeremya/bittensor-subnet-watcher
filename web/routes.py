@@ -224,7 +224,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
                 momentum_why = "no flow data"
 
         # ── Verdict ───────────────────────────────────────────────────────────
-        # Single synthesised call for the investor: entry / caution / exit / risk
+        # Single 1-2 week swing call for the investor: entry / caution / exit / risk
         if owner_n >= 3:
             verdict = f"Governance risk — {owner_n} ownership changes in 30 days"
         elif momentum_state == "fragile":

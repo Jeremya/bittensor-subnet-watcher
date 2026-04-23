@@ -174,3 +174,62 @@ def test_recommendations_emit_new_buy_when_candidate_outranks_weakest_held(monke
 
     assert result["new_candidates"][0]["netuid"] == 14
     assert result["new_candidates"][0]["action"] == "new_buy"
+
+
+def test_new_buy_requires_positive_flow_or_strong_catalyst(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 78.0)
+    monkeypatch.setattr(config, "PORTFOLIO_REPLACE_SCORE_MARGIN", 8.0)
+    positions = {
+        7: {
+            "netuid": 7,
+            "subnet_name": "Cortex",
+            "category": "Infrastructure",
+            "tao_value": 8.0,
+            "allocation_pct": 0.08,
+        }
+    }
+    snapshots = [
+        make_snapshot(netuid=7, name="Cortex", category="Infrastructure", composite_score=62.0),
+        make_snapshot(
+            netuid=14,
+            name="Macro",
+            category="AI Training",
+            composite_score=90.0,
+            momentum_score=45.0,
+        ),
+    ]
+
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={},
+        coverage_netuids=set(),
+        milestone_netuids=set(),
+    )
+
+    assert result["new_candidates"] == []
+
+
+def test_trim_on_weak_swing_score_and_outflow_risk(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_HOLD_FLOOR_SCORE", 55.0)
+    positions = {
+        3: {
+            "netuid": 3,
+            "subnet_name": "Templar",
+            "category": "AI Training",
+            "tao_value": 10.0,
+            "allocation_pct": 0.10,
+        }
+    }
+    snapshots = [make_snapshot(netuid=3, composite_score=48.0, momentum_score=35.0)]
+
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={3: {"tao_outflow"}},
+        coverage_netuids=set(),
+        milestone_netuids=set(),
+    )
+
+    assert result["table_actions"][3]["action"] == "trim"
+    assert "swing score deteriorating with outflow risk" in result["table_actions"][3]["reasons"]

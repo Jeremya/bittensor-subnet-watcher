@@ -3,6 +3,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from models import SubnetSnapshot
 import config
+from engine.signals import (
+    compute_relative_value_scores,
+    compute_swing_signal,
+    compute_tradability_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -220,39 +225,29 @@ def score_snapshots(snapshots: list[SubnetSnapshot],
     owner_changes_by_netuid: {netuid: distinct_owner_count} over past 30 days.
     reg_cost_7d_by_netuid: {netuid: reg_cost_tao} from ~7 days ago.
     """
-    # Compute yield scores (requires cross-subnet normalization, done in batch)
-    compute_yield_scores(snapshots)
-
     # Compute max followers for hype normalization
     followers = [s.x_followers for s in snapshots if s.x_followers is not None]
     max_followers = max(followers) if followers else 10000
+    relative_value_by_netuid = compute_relative_value_scores(snapshots)
 
     for snap in snapshots:
-        owner_changes = (owner_changes_by_netuid or {}).get(snap.netuid, 1)
-        prev_reg_cost = (reg_cost_7d_by_netuid or {}).get(snap.netuid)
-        snap.health_score = compute_health_score(
-            snap, owner_changes=owner_changes, prev_reg_cost=prev_reg_cost
+        relative_value = relative_value_by_netuid.get(snap.netuid)
+        if relative_value is None:
+            continue
+        swing = compute_swing_signal(
+            snap,
+            history=history_by_netuid.get(snap.netuid, []),
+            relative_value=relative_value,
+            alert_types=set(),
+            covered=False,
+            has_milestone=False,
         )
-        snap.momentum_score = compute_momentum_score(
-            snap, history=history_by_netuid.get(snap.netuid, [])
-        )
+        tradability = compute_tradability_score(snap)
+
+        snap.yield_score = relative_value.score
+        snap.health_score = tradability.score
+        snap.momentum_score = swing.swing_score
         # Hype is computed for display but intentionally excluded from composite —
         # it is gameable (purchased followers, low-effort tweets) and protocol-external.
         snap.hype_score = compute_hype_score(snap, max_followers=max_followers)
-
-        # Composite: weighted sum of protocol-native scores only
-        parts = []
-        if snap.yield_score is not None:
-            parts.append((snap.yield_score, config.YIELD_WEIGHT))
-        if snap.health_score is not None:
-            parts.append((snap.health_score, config.HEALTH_WEIGHT))
-        if snap.momentum_score is not None:
-            parts.append((snap.momentum_score, config.MOMENTUM_WEIGHT))
-
-        if parts:
-            total_weight = sum(w for _, w in parts)
-            snap.composite_score = round(
-                sum(s * w for s, w in parts) / total_weight, 2
-            )
-        else:
-            snap.composite_score = None
+        snap.composite_score = swing.swing_score

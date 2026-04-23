@@ -1,5 +1,19 @@
 # TODOS
 
+## P1 — Calibration Follow-up
+
+### Backtest swing signals over 7d/14d forward windows
+**What:** Replay historical snapshots and measure whether high swing scores, catalysts,
+sell/trim alerts, and flow reversals predict 7d/14d forward TAO returns.
+
+**Why:** The signal refactor encodes the current Taoflow thesis, but thresholds still need
+empirical calibration before recommendations should be treated as decision-grade.
+
+**Effort:** M
+**Priority:** P1
+
+---
+
 ## P1 — Follow-up (next PR)
 
 ### ✅ Ownership transfer alert (alert #7) — DONE
