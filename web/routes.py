@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from db.database import (
     add_analyst_handle,
+    get_active_analyst_coverage_netuids,
     get_analyst_mentions_for_netuid,
     get_analyst_watchlist,
     get_covered_netuids,
@@ -18,8 +19,14 @@ from db.database import (
     get_subnet_detail, get_alerts_for_netuid, get_snapshots_for_netuid,
     get_owner_change_counts, get_reg_cost_7d_ago,
     get_portfolio_positions, get_staked_netuids,
+    get_recent_alert_types_per_netuid,
+    get_recent_milestone_netuids,
     remove_analyst_handle,
     update_registry_category,
+)
+from engine.recommendations import (
+    build_portfolio_ledger,
+    build_portfolio_recommendations,
 )
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -304,70 +311,63 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
 
     @app.get("/portfolio", response_class=HTMLResponse)
     async def portfolio(request: Request):
-        rows = await get_portfolio_positions(db)
+        rows = [dict(row) for row in await get_portfolio_positions(db)]
+        ledger = build_portfolio_ledger(
+            rows,
+            config.WALLET_COLDKEYS,
+            config.WALLET_LABELS,
+        )
+        latest_snaps = [dict(row) for row in await get_latest_snapshots_with_registry(db)]
+        snapshots_by_netuid = {snap["netuid"]: snap for snap in latest_snaps}
+        alert_types = await get_recent_alert_types_per_netuid(
+            db,
+            [
+                "convergence",
+                "milestone",
+                "analyst_mention",
+                "liquidity_floor",
+                "emission_near_zero",
+                "ownership_transfer",
+                "hyperparameter_change",
+                "tao_outflow",
+                "dead_github",
+            ],
+            config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS,
+        )
+        coverage_netuids = await get_active_analyst_coverage_netuids(
+            db,
+            config.ANALYST_COVERAGE_DECAY_HOURS,
+        )
+        milestone_netuids = await get_recent_milestone_netuids(
+            db,
+            config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS,
+        )
+        recs = build_portfolio_recommendations(
+            positions_by_netuid=ledger["positions_by_netuid"],
+            snapshots=latest_snaps,
+            alert_types_by_netuid=alert_types,
+            coverage_netuids=coverage_netuids,
+            milestone_netuids=milestone_netuids,
+        )
 
-        # Build label map
-        label_map = {}
-        for i, ck in enumerate(config.WALLET_COLDKEYS):
-            label_map[ck] = (config.WALLET_LABELS[i]
-                             if i < len(config.WALLET_LABELS) else f"Wallet {i + 1}")
-
-        # Group by coldkey
-        from collections import defaultdict
-        by_coldkey: dict[str, list[dict]] = defaultdict(list)
-        tao_usd_price: float | None = None
-
-        for row in rows:
-            r = dict(row)
-            if tao_usd_price is None and r.get("tao_usd_price"):
-                tao_usd_price = r["tao_usd_price"]
-            baseline = r["baseline_tao_value"]
-            tao_val = r["tao_value"]
-            if baseline and baseline > 0:
-                r["pnl_tao"] = tao_val - baseline
-                r["pnl_pct"] = (tao_val - baseline) / baseline * 100
-            else:
-                r["pnl_tao"] = None
-                r["pnl_pct"] = None
-            r["usd_value"] = (tao_val * tao_usd_price) if tao_usd_price else None
-            r["subnet_label"] = r.get("name") or f"SN{r['netuid']}"
-            by_coldkey[r["coldkey"]].append(r)
-
-        wallets = []
-        grand_tao = grand_usd = grand_pnl_tao = 0.0
-        grand_baseline = 0.0
-
-        for ck, positions in by_coldkey.items():
-            total_tao = sum(p["tao_value"] for p in positions)
-            total_usd = sum(p["usd_value"] or 0 for p in positions)
-            total_baseline = sum(p["baseline_tao_value"] for p in positions)
-            total_pnl_tao = total_tao - total_baseline if total_baseline > 0 else None
-            total_pnl_pct = (total_pnl_tao / total_baseline * 100
-                             if total_baseline > 0 else None)
-            wallets.append({
-                "label": label_map.get(ck, ck[:12] + "..."),
-                "coldkey": ck,
-                "positions": positions,
-                "total_tao": total_tao,
-                "total_usd": total_usd if tao_usd_price else None,
-                "total_pnl_tao": total_pnl_tao,
-                "total_pnl_pct": total_pnl_pct,
-            })
-            grand_tao += total_tao
-            grand_usd += total_usd
-            grand_baseline += total_baseline
-
-        grand_pnl_tao = grand_tao - grand_baseline if grand_baseline > 0 else None
-        grand_pnl_pct = (grand_pnl_tao / grand_baseline * 100
-                         if grand_baseline and grand_baseline > 0 else None)
+        for wallet in ledger["wallets"]:
+            for pos in wallet["positions"]:
+                aggregate = ledger["positions_by_netuid"][pos["netuid"]]
+                pos["allocation_pct"] = aggregate["allocation_pct"] * 100
+                snap = snapshots_by_netuid.get(pos["netuid"])
+                pos["score"] = snap.get("composite_score") if snap else None
+                pos["recommendation"] = recs["table_actions"].get(
+                    pos["netuid"],
+                    {
+                        "action": "hold",
+                        "confidence": "low",
+                        "reasons": [],
+                    },
+                )
 
         return templates.TemplateResponse(request, "portfolio.html", {
-            "wallets": wallets,
-            "grand_total_tao": grand_tao,
-            "grand_total_usd": grand_usd if tao_usd_price else None,
-            "grand_pnl_tao": grand_pnl_tao,
-            "grand_pnl_pct": grand_pnl_pct,
-            "tao_usd_price": tao_usd_price,
+            **ledger,
+            **recs,
         })
 
     @app.get("/api/snapshots")
