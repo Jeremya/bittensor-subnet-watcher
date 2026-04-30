@@ -20,7 +20,9 @@ from models import SubnetSnapshot
 from db.database import init_db, insert_snapshot, get_latest_snapshots, \
     get_unsent_alerts, mark_alerts_sent, prune_old_snapshots, get_registry, \
     get_snapshots_for_netuid, get_owner_change_counts, get_reg_cost_7d_ago, \
-    upsert_portfolio_position, delete_gone_positions, update_registry_category
+    upsert_portfolio_position, delete_gone_positions, update_registry_category, \
+    get_recent_alert_types_per_netuid, get_active_analyst_coverage_netuids, \
+    get_recent_milestone_netuids
 from collectors.analyst import AnalystCollector
 from collectors.chain import ChainCollector, init_subtensor, close_subtensor
 from collectors.github import GitHubCollector
@@ -149,9 +151,28 @@ async def poll_cycle() -> None:
         ]
     owner_changes = await get_owner_change_counts(_db, days=30)
     reg_cost_7d = await get_reg_cost_7d_ago(_db)
-    score_snapshots(chain_snapshots, history_by_netuid,
-                    owner_changes_by_netuid=owner_changes,
-                    reg_cost_7d_by_netuid=reg_cost_7d)
+    alert_types_for_scoring = await get_recent_alert_types_per_netuid(
+        _db,
+        [
+            "convergence", "analyst_mention", "milestone", "whale_inflow",
+            "github_spike", "emission_near_zero", "liquidity_floor",
+            "ownership_transfer", "tao_outflow", "dead_github",
+        ],
+        config.ANALYST_COVERAGE_DECAY_HOURS,
+    )
+    coverage_netuids_for_scoring = await get_active_analyst_coverage_netuids(
+        _db, config.ANALYST_COVERAGE_DECAY_HOURS
+    )
+    milestone_netuids_for_scoring = await get_recent_milestone_netuids(
+        _db, config.ANALYST_COVERAGE_DECAY_HOURS
+    )
+    score_snapshots(
+        chain_snapshots,
+        history_by_netuid,
+        alert_types_by_netuid=alert_types_for_scoring,
+        coverage_netuids=coverage_netuids_for_scoring,
+        milestone_netuids=milestone_netuids_for_scoring,
+    )
 
     # 4. Persist snapshots
     for snap in chain_snapshots:

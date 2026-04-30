@@ -228,6 +228,30 @@ def test_hype_score_not_included_in_composite():
     assert base.composite_score == pytest.approx(with_hype.composite_score, rel=0.01)
 
 
+def test_score_snapshots_forwards_alert_context_to_swing():
+    """score_snapshots() must forward alert/coverage context to compute_swing_signal()."""
+    snap_without = make_snap(1, daily_emission_tao=20.0, alpha_mcap_usd=600_000, tao_usd_price=300.0)
+    hist_snap = SubnetSnapshot(
+        netuid=1,
+        polled_at=datetime.now(timezone.utc) - timedelta(hours=6),
+        net_tao_flow_tao=10.0,
+    )
+    hist = [hist_snap]
+    score_snapshots([snap_without], {1: hist})
+    score_without = snap_without.composite_score
+
+    snap_with = make_snap(1, daily_emission_tao=20.0, alpha_mcap_usd=600_000, tao_usd_price=300.0)
+    score_snapshots(
+        [snap_with],
+        {1: hist},
+        alert_types_by_netuid={1: {"convergence"}},
+        coverage_netuids={1},
+    )
+    score_with = snap_with.composite_score
+
+    assert score_with > score_without
+
+
 # ── Hype score ────────────────────────────────────────────────────────────────
 
 def test_hype_score_none_without_social_data():

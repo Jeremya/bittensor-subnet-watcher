@@ -214,16 +214,19 @@ def compute_hype_score(snap: SubnetSnapshot,
     return round(score, 2)
 
 
-def score_snapshots(snapshots: list[SubnetSnapshot],
-                    history_by_netuid: dict[int, list[SubnetSnapshot]],
-                    owner_changes_by_netuid: Optional[dict[int, int]] = None,
-                    reg_cost_7d_by_netuid: Optional[dict[int, Optional[float]]] = None,
-                    ) -> None:
+def score_snapshots(
+    snapshots: list[SubnetSnapshot],
+    history_by_netuid: dict[int, list[SubnetSnapshot]],
+    alert_types_by_netuid: Optional[dict[int, set[str]]] = None,
+    coverage_netuids: Optional[set[int]] = None,
+    milestone_netuids: Optional[set[int]] = None,
+) -> None:
     """
     Compute and set all scores on snapshots in-place.
     history_by_netuid: {netuid: [older_snapshots]} for momentum calculation.
-    owner_changes_by_netuid: {netuid: distinct_owner_count} over past 30 days.
-    reg_cost_7d_by_netuid: {netuid: reg_cost_tao} from ~7 days ago.
+    alert_types_by_netuid: {netuid: set of recent alert type strings} for swing signal boost.
+    coverage_netuids: set of netuids with active analyst coverage.
+    milestone_netuids: set of netuids with recent milestones.
     """
     # Compute max followers for hype normalization
     followers = [s.x_followers for s in snapshots if s.x_followers is not None]
@@ -238,9 +241,9 @@ def score_snapshots(snapshots: list[SubnetSnapshot],
             snap,
             history=history_by_netuid.get(snap.netuid, []),
             relative_value=relative_value,
-            alert_types=set(),
-            covered=False,
-            has_milestone=False,
+            alert_types=(alert_types_by_netuid or {}).get(snap.netuid, set()),
+            covered=(coverage_netuids is not None and snap.netuid in coverage_netuids),
+            has_milestone=(milestone_netuids is not None and snap.netuid in milestone_netuids),
         )
         tradability = compute_tradability_score(snap)
 
