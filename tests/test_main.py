@@ -76,8 +76,6 @@ async def test_poll_cycle_calls_evaluate_convergence(monkeypatch):
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
             patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
-            patch.object(main, "get_owner_change_counts", AsyncMock(return_value={})), \
-            patch.object(main, "get_reg_cost_7d_ago", AsyncMock(return_value={})), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "score_snapshots", MagicMock()), \
             patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \

@@ -19,7 +19,7 @@ config.validate_config()  # exit(1) if missing required env vars
 from models import SubnetSnapshot
 from db.database import init_db, insert_snapshot, get_latest_snapshots, \
     get_unsent_alerts, mark_alerts_sent, prune_old_snapshots, get_registry, \
-    get_snapshots_for_netuid, get_owner_change_counts, get_reg_cost_7d_ago, \
+    get_snapshots_for_netuid, \
     upsert_portfolio_position, delete_gone_positions, update_registry_category, \
     get_recent_alert_types_per_netuid, get_active_analyst_coverage_netuids, \
     get_recent_milestone_netuids
@@ -149,8 +149,6 @@ async def poll_cycle() -> None:
             )
             for r in rows
         ]
-    owner_changes = await get_owner_change_counts(_db, days=30)
-    reg_cost_7d = await get_reg_cost_7d_ago(_db)
     alert_types_for_scoring = await get_recent_alert_types_per_netuid(
         _db,
         [
