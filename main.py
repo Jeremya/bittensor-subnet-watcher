@@ -162,7 +162,7 @@ async def poll_cycle() -> None:
         _db, config.ANALYST_COVERAGE_DECAY_HOURS
     )
     milestone_netuids_for_scoring = await get_recent_milestone_netuids(
-        _db, config.ANALYST_COVERAGE_DECAY_HOURS
+        _db, config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS
     )
     score_snapshots(
         chain_snapshots,
