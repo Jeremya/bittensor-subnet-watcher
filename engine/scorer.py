@@ -6,7 +6,6 @@ import config
 from engine.signals import (
     compute_relative_value_scores,
     compute_swing_signal,
-    compute_tradability_score,
 )
 
 logger = logging.getLogger(__name__)
@@ -220,6 +219,8 @@ def score_snapshots(
     alert_types_by_netuid: Optional[dict[int, set[str]]] = None,
     coverage_netuids: Optional[set[int]] = None,
     milestone_netuids: Optional[set[int]] = None,
+    owner_changes_by_netuid: Optional[dict[int, int]] = None,
+    reg_cost_7d_by_netuid: Optional[dict[int, Optional[float]]] = None,
 ) -> None:
     """
     Compute and set all scores on snapshots in-place.
@@ -227,6 +228,8 @@ def score_snapshots(
     alert_types_by_netuid: {netuid: set of recent alert type strings} for swing signal boost.
     coverage_netuids: set of netuids with active analyst coverage.
     milestone_netuids: set of netuids with recent milestones.
+    owner_changes_by_netuid: reserved for health scoring compatibility.
+    reg_cost_7d_by_netuid: reserved for health scoring compatibility.
     """
     # Compute max followers for hype normalization
     followers = [s.x_followers for s in snapshots if s.x_followers is not None]
@@ -245,12 +248,17 @@ def score_snapshots(
             covered=(coverage_netuids is not None and snap.netuid in coverage_netuids),
             has_milestone=(milestone_netuids is not None and snap.netuid in milestone_netuids),
         )
-        tradability = compute_tradability_score(snap)
 
         snap.yield_score = relative_value.score
-        snap.health_score = tradability.score
+        snap.health_score = swing.tradability.score
         snap.momentum_score = swing.swing_score
         # Hype is computed for display but intentionally excluded from composite —
         # it is gameable (purchased followers, low-effort tweets) and protocol-external.
         snap.hype_score = compute_hype_score(snap, max_followers=max_followers)
+        snap.flow_score = swing.flow.score
+        snap.relative_value_score = swing.relative_value.score
+        snap.tradability_score = swing.tradability.score
+        snap.catalyst_score = swing.catalyst.score
+        snap.risk_penalty = swing.risk.penalty
+        snap.swing_score = swing.swing_score
         snap.composite_score = swing.swing_score

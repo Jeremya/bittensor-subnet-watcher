@@ -111,19 +111,55 @@ def test_risk_penalty_severe_risk_blocks_new_exposure():
     assert "severe liquidity/emission risk" in penalty.risks
 
 
-def test_swing_signal_high_yield_cannot_overcome_negative_flow_and_risk():
-    current = make_snap(daily_emission_tao=200.0, alpha_mcap_usd=300_000.0, emission_rank=2)
-    relative_scores = compute_relative_value_scores([current])
+def test_swing_signal_uses_catalyst_and_coverage_context():
+    current = make_snap(emission_rank=4)
+    history = history_flow([20.0, 10.0, 5.0])
+    relative = compute_relative_value_scores([current])[current.netuid]
+
+    neutral = compute_swing_signal(
+        current,
+        history,
+        relative,
+        set(),
+        covered=False,
+        has_milestone=False,
+    )
+    catalyzed = compute_swing_signal(
+        current,
+        history,
+        relative,
+        {"convergence", "analyst_mention"},
+        covered=True,
+        has_milestone=True,
+    )
+
+    assert isinstance(catalyzed, SwingSignal)
+    assert catalyzed.swing_score > neutral.swing_score
+    assert "fresh convergence catalyst" in catalyzed.reasons
+    assert "fresh analyst coverage" in catalyzed.reasons
+    assert "fresh product/research milestone" in catalyzed.reasons
+
+
+def test_swing_signal_penalizes_outflow_and_liquidity_risk():
+    current = make_snap(
+        volume_24h_alpha=1.0,
+        alpha_price_tao=0.001,
+        alpha_mcap_tao=100_000.0,
+    )
+    history = history_flow([-30.0, -20.0, -10.0])
+    relative = compute_relative_value_scores([current])[current.netuid]
+
     signal = compute_swing_signal(
         current,
-        history_flow([-40.0, -30.0, -20.0]),
-        relative_scores[current.netuid],
-        {"tao_outflow", "dead_github"},
+        history,
+        relative,
+        {"tao_outflow", "liquidity_floor"},
         covered=False,
         has_milestone=False,
     )
 
     assert isinstance(signal, SwingSignal)
-    assert signal.swing_score < 60.0
-    assert signal.flow.is_negative
-    assert signal.risk.penalty > 0
+    assert signal.swing_score < 50.0
+    assert signal.risk.has_severe_risk
+    assert signal.tradability.blocks_new_buy
+    assert "sustained net TAO outflow" in signal.flow.risks

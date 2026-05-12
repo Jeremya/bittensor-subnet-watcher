@@ -230,7 +230,15 @@ def test_hype_score_not_included_in_composite():
 
 def test_score_snapshots_forwards_alert_context_to_swing():
     """score_snapshots() must forward alert/coverage context to compute_swing_signal()."""
-    snap_without = make_snap(1, daily_emission_tao=20.0, alpha_mcap_usd=600_000, tao_usd_price=300.0)
+    snap_without = make_snap(
+        1,
+        daily_emission_tao=20.0,
+        alpha_mcap_usd=600_000,
+        tao_usd_price=300.0,
+        volume_24h_alpha=50_000.0,
+        alpha_price_tao=0.002,
+        alpha_mcap_tao=1_000.0,
+    )
     hist_snap = SubnetSnapshot(
         netuid=1,
         polled_at=datetime.now(timezone.utc) - timedelta(hours=6),
@@ -240,16 +248,87 @@ def test_score_snapshots_forwards_alert_context_to_swing():
     score_snapshots([snap_without], {1: hist})
     score_without = snap_without.composite_score
 
-    snap_with = make_snap(1, daily_emission_tao=20.0, alpha_mcap_usd=600_000, tao_usd_price=300.0)
+    snap_with = make_snap(
+        1,
+        daily_emission_tao=20.0,
+        alpha_mcap_usd=600_000,
+        tao_usd_price=300.0,
+        volume_24h_alpha=50_000.0,
+        alpha_price_tao=0.002,
+        alpha_mcap_tao=1_000.0,
+    )
     score_snapshots(
         [snap_with],
         {1: hist},
         alert_types_by_netuid={1: {"convergence"}},
         coverage_netuids={1},
+        milestone_netuids={1},
     )
     score_with = snap_with.composite_score
 
     assert score_with > score_without
+    assert snap_with.momentum_score == snap_with.composite_score
+    assert snap_with.yield_score is not None
+    assert snap_with.health_score is not None
+
+
+def test_score_snapshots_accepts_explicit_swing_context_kwargs():
+    """The scorer keeps the expanded swing-context signature for planned callers."""
+    snap = make_snap(1, daily_emission_tao=20.0, alpha_mcap_usd=600_000, tao_usd_price=300.0)
+    hist_snap = SubnetSnapshot(
+        netuid=1,
+        polled_at=datetime.now(timezone.utc) - timedelta(hours=6),
+        net_tao_flow_tao=10.0,
+    )
+
+    score_snapshots(
+        [snap],
+        {1: [hist_snap]},
+        alert_types_by_netuid={1: {"analyst_mention"}},
+        coverage_netuids={1},
+        milestone_netuids=set(),
+        owner_changes_by_netuid={1: 1},
+        reg_cost_7d_by_netuid={1: 0.10},
+    )
+
+    assert snap.composite_score is not None
+    assert snap.momentum_score == snap.composite_score
+
+
+def test_score_snapshots_populates_explicit_signal_fields():
+    snap = make_snap(
+        1,
+        daily_emission_tao=20.0,
+        alpha_mcap_usd=600_000,
+        tao_usd_price=300.0,
+        volume_24h_alpha=50_000.0,
+        alpha_price_tao=0.002,
+        alpha_mcap_tao=1_000.0,
+    )
+    hist_snap = SubnetSnapshot(
+        netuid=1,
+        polled_at=datetime.now(timezone.utc) - timedelta(hours=6),
+        net_tao_flow_tao=10.0,
+        alpha_mcap_tao=1_000.0,
+        emission_rank=9,
+    )
+
+    score_snapshots(
+        [snap],
+        {1: [hist_snap]},
+        alert_types_by_netuid={1: {"convergence", "analyst_mention"}},
+        coverage_netuids={1},
+        milestone_netuids={1},
+    )
+
+    assert snap.flow_score is not None
+    assert snap.relative_value_score is not None
+    assert snap.tradability_score is not None
+    assert snap.catalyst_score is not None
+    assert snap.risk_penalty is not None
+    assert snap.swing_score is not None
+    assert snap.composite_score == snap.swing_score
+    assert snap.momentum_score == snap.swing_score
 
 
 # ── Hype score ────────────────────────────────────────────────────────────────
@@ -309,8 +388,20 @@ def test_score_snapshots_composite_is_swing_score_from_flow_value_and_tradabilit
     ]
     hist[0].polled_at = now - timedelta(hours=4)
 
-    score_snapshots([snap], history_by_netuid={1: hist})
+    score_snapshots(
+        [snap],
+        history_by_netuid={1: hist},
+        alert_types_by_netuid={1: {"convergence"}},
+        coverage_netuids={1},
+        milestone_netuids={1},
+    )
 
     assert snap.composite_score is not None
     assert snap.composite_score > 60.0
     assert snap.momentum_score == snap.composite_score
+    assert snap.swing_score == snap.composite_score
+    assert snap.flow_score is not None
+    assert snap.relative_value_score is not None
+    assert snap.tradability_score is not None
+    assert snap.catalyst_score is not None
+    assert snap.risk_penalty is not None
