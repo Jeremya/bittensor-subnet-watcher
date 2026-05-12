@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     alpha_mcap_usd     REAL,
     tao_in_tao         REAL,
     volume_24h_alpha   REAL,
+    buy_slippage_pct   REAL,
+    sell_slippage_pct  REAL,
     tao_usd_price      REAL,
     daily_emission_tao REAL,
     emission_rank      INTEGER,
@@ -39,6 +41,12 @@ CREATE TABLE IF NOT EXISTS snapshots (
     health_score       REAL,
     momentum_score     REAL,
     hype_score         REAL,
+    flow_score         REAL,
+    relative_value_score REAL,
+    tradability_score  REAL,
+    catalyst_score     REAL,
+    risk_penalty       REAL,
+    swing_score        REAL,
     composite_score    REAL
 );
 
@@ -148,6 +156,14 @@ async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
         ("net_tao_flow_tao", "REAL"),
         ("max_allowed_uids", "INTEGER"),
         ("tao_in_tao", "REAL"),
+        ("buy_slippage_pct", "REAL"),
+        ("sell_slippage_pct", "REAL"),
+        ("flow_score", "REAL"),
+        ("relative_value_score", "REAL"),
+        ("tradability_score", "REAL"),
+        ("catalyst_score", "REAL"),
+        ("risk_penalty", "REAL"),
+        ("swing_score", "REAL"),
     ]:
         if col not in existing_cols:
             await conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {definition}")
@@ -191,22 +207,28 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
     await db.execute("""
         INSERT INTO snapshots (
             netuid, polled_at, alpha_price_tao, alpha_mcap_tao, alpha_mcap_usd,
-            tao_in_tao, volume_24h_alpha, tao_usd_price, daily_emission_tao, emission_rank,
+            tao_in_tao, volume_24h_alpha, buy_slippage_pct, sell_slippage_pct,
+            tao_usd_price, daily_emission_tao, emission_rank,
             net_tao_flow_tao, n_neurons, max_allowed_uids, reg_cost_tao, owner_coldkey,
             gh_last_push, gh_stars, gh_forks, gh_open_issues,
             x_last_tweet, x_followers,
-            yield_score, health_score, momentum_score, hype_score, composite_score
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            yield_score, health_score, momentum_score, hype_score,
+            flow_score, relative_value_score, tradability_score, catalyst_score,
+            risk_penalty, swing_score, composite_score
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         snap.netuid, _dt_to_str(snap.polled_at),
         snap.alpha_price_tao, snap.alpha_mcap_tao, snap.alpha_mcap_usd,
-        snap.tao_in_tao, snap.volume_24h_alpha, snap.tao_usd_price,
+        snap.tao_in_tao, snap.volume_24h_alpha, snap.buy_slippage_pct, snap.sell_slippage_pct,
+        snap.tao_usd_price,
         snap.daily_emission_tao, snap.emission_rank,
         snap.net_tao_flow_tao,
         snap.n_neurons, snap.max_allowed_uids, snap.reg_cost_tao, snap.owner_coldkey,
         _dt_to_str(snap.gh_last_push), snap.gh_stars, snap.gh_forks, snap.gh_open_issues,
         _dt_to_str(snap.x_last_tweet), snap.x_followers,
         snap.yield_score, snap.health_score, snap.momentum_score, snap.hype_score,
+        snap.flow_score, snap.relative_value_score, snap.tradability_score,
+        snap.catalyst_score, snap.risk_penalty, snap.swing_score,
         snap.composite_score,
     ))
     await db.commit()
@@ -232,6 +254,22 @@ async def get_snapshots_for_netuid(db: aiosqlite.Connection,
     cursor = await db.execute(
         "SELECT * FROM snapshots WHERE netuid=? ORDER BY polled_at DESC LIMIT ?",
         (netuid, limit)
+    )
+    return await cursor.fetchall()
+
+
+async def get_all_snapshots(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    """Return all snapshots ordered for historical backtesting."""
+    cursor = await db.execute(
+        "SELECT * FROM snapshots ORDER BY netuid ASC, polled_at ASC"
+    )
+    return await cursor.fetchall()
+
+
+async def get_all_snapshots(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
+    """Return all snapshots ordered for time-series analysis."""
+    cursor = await db.execute(
+        "SELECT * FROM snapshots ORDER BY netuid ASC, polled_at ASC"
     )
     return await cursor.fetchall()
 

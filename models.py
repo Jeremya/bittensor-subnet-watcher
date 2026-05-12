@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
@@ -14,6 +14,8 @@ class SubnetSnapshot:
     alpha_mcap_usd: Optional[float] = None     # alpha_mcap_tao * tao_usd
     tao_in_tao: Optional[float] = None         # tao_in.tao — raw pool TAO reserve (used for flow calc)
     volume_24h_alpha: Optional[float] = None   # subnet_volume.tao (alpha tokens traded in 24h)
+    buy_slippage_pct: Optional[float] = None   # reference TAO entry slippage (%)
+    sell_slippage_pct: Optional[float] = None  # reference TAO exit slippage (%)
     tao_usd_price: Optional[float] = None      # from CoinGecko
     daily_emission_tao: Optional[float] = None  # tao_in_emission.tao * 7200
     emission_rank: Optional[int] = None        # rank by daily_emission_tao (1 = highest)
@@ -39,6 +41,14 @@ class SubnetSnapshot:
     health_score: Optional[float] = None
     momentum_score: Optional[float] = None
     hype_score: Optional[float] = None
+    tradability_reference_tao: Optional[float] = None
+    tradability_exit_slippage_pct: Optional[float] = None
+    flow_score: Optional[float] = None
+    relative_value_score: Optional[float] = None
+    tradability_score: Optional[float] = None
+    catalyst_score: Optional[float] = None
+    risk_penalty: Optional[float] = None
+    swing_score: Optional[float] = None
     composite_score: Optional[float] = None
 
 

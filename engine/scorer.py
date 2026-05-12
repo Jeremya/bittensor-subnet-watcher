@@ -11,6 +11,13 @@ from engine.signals import (
 logger = logging.getLogger(__name__)
 
 
+def _reference_history_snapshot(history: list[SubnetSnapshot], cutoff: datetime) -> SubnetSnapshot:
+    eligible = [row for row in history if row.polled_at <= cutoff]
+    if eligible:
+        return max(eligible, key=lambda row: row.polled_at)
+    return max(history, key=lambda row: row.polled_at)
+
+
 def _raw_yield(snap: SubnetSnapshot) -> Optional[float]:
     """Annualized emission yield: (daily_emission_tao * tao_price * 365) / alpha_mcap_usd
 
@@ -141,14 +148,10 @@ def compute_momentum_score(snap: SubnetSnapshot,
     if not history:
         return None
 
-    # Find the oldest snapshot within ~7 days
+    # Anchor to the most recent snapshot at or before the 7-day cutoff.
     now = snap.polled_at or datetime.now(timezone.utc)
     week_ago = now - timedelta(days=7)
-    past = [h for h in history if h.polled_at <= week_ago]
-    if not past:
-        past = history  # use whatever we have
-
-    ref = past[-1]  # oldest available
+    ref = _reference_history_snapshot(history, week_ago)
 
     score = 50.0  # neutral baseline
 

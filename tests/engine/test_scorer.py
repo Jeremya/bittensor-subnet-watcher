@@ -180,6 +180,34 @@ def test_momentum_score_uses_net_flow_when_available():
     assert score_inflow > score_outflow
 
 
+def test_momentum_score_anchor_is_order_independent():
+    """Descending DB history should still anchor to the newest row around the cutoff."""
+    now = datetime.now(timezone.utc)
+    current = make_snap(1, alpha_mcap_tao=1000.0, emission_rank=5)
+
+    near_cutoff = make_snap(
+        1,
+        alpha_mcap_tao=995.0,
+        emission_rank=6,
+        net_tao_flow_tao=10.0,
+    )
+    near_cutoff.polled_at = now - timedelta(days=8)
+    older = make_snap(
+        1,
+        alpha_mcap_tao=940.0,
+        emission_rank=12,
+        net_tao_flow_tao=50.0,
+    )
+    older.polled_at = now - timedelta(days=10)
+
+    score_desc = compute_momentum_score(current, history=[near_cutoff, older])
+    score_asc = compute_momentum_score(current, history=[older, near_cutoff])
+
+    assert score_desc is not None
+    assert score_asc is not None
+    assert score_desc == pytest.approx(score_asc)
+
+
 # ── score_snapshots ──────────────────────────────────────────────────────────
 
 def test_score_snapshots_sets_composite():
