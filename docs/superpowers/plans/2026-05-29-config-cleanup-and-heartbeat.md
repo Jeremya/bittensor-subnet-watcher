@@ -29,7 +29,11 @@
 
 ---
 
-## Task 1: Remove Dead / Duplicate Config + Add Regression Guard
+## Task 1: Remove Dead / Duplicate Config + Add Regression Guard ✅ DONE (commit d5f0fc8)
+
+> All steps complete. Full suite: 245 passed. Note: `test_validate_config_exits_if_token_missing`
+> fails when `tests/test_config.py` is run in ISOLATION — this is a pre-existing order/`.env`
+> artifact (verified on clean HEAD), unrelated to this task, and passes in the full suite.
 
 **Why:** `config.py` defines `TRADABILITY_REFERENCE_TAO` twice — `10.0` (line 61, dead, shadowed) and `5.0` (line 102, live). The live value is the one read by `collectors/chain.py` and `engine/signals.py`; the `10.0` line is misleading dead weight. `TRADABILITY_SLIPPAGE_BLOCK_PCT` (line 62) is defined but referenced nowhere in the repo (verified: `grep -rn TRADABILITY_SLIPPAGE_BLOCK_PCT --include="*.py"` returns only `config.py`). Line 53 is a duplicate `# ── Bittensor ──` header sitting directly above the `# ── Portfolio tracking ──` header. For a product whose entire value is threshold-driven judgment, the config file must be unambiguous.
 
@@ -37,7 +41,7 @@
 - Modify: `tests/test_config.py`
 - Modify: `config.py`
 
-- [ ] **Step 1: Write the failing regression test**
+- [x] **Step 1: Write the failing regression test**
 
 Add to `tests/test_config.py`:
 
@@ -62,12 +66,12 @@ def test_config_has_no_duplicate_module_level_definitions():
     assert duplicates == [], f"duplicate config definitions: {duplicates}"
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_config.py::test_config_has_no_duplicate_module_level_definitions -v`
 Expected: FAIL with `AssertionError: duplicate config definitions: ['TRADABILITY_REFERENCE_TAO']`
 
-- [ ] **Step 3: Delete the dead duplicate lines in `config.py`**
+- [x] **Step 3: Delete the dead duplicate lines in `config.py`**
 
 Delete these two lines (currently lines 61-62), keeping the surrounding lines:
 
@@ -93,7 +97,7 @@ TRADABILITY_REFERENCE_TAO: float = 5.0           # reference swing trade size
 TRADABILITY_MAX_SLIPPAGE_PCT: float = 8.0        # beyond this, new buys are blocked
 ```
 
-- [ ] **Step 4: Delete the stray duplicate `Bittensor` header**
+- [x] **Step 4: Delete the stray duplicate `Bittensor` header**
 
 Delete the duplicate header line (currently line 53) that sits directly above `# ── Portfolio tracking ──`:
 
@@ -105,12 +109,12 @@ Verify only ONE `# ── Bittensor ──` header remains:
 Run: `grep -c "── Bittensor ──" config.py`
 Expected: `1`
 
-- [ ] **Step 5: Run the config tests + full suite**
+- [x] **Step 5: Run the config tests + full suite**
 
 Run: `.venv/bin/pytest tests/test_config.py -v && .venv/bin/pytest -q`
 Expected: all PASS (the dead `TRADABILITY_SLIPPAGE_BLOCK_PCT` had no readers, so nothing else breaks).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add config.py tests/test_config.py
