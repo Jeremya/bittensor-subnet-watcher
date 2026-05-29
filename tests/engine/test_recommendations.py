@@ -176,6 +176,46 @@ def test_recommendations_emit_new_buy_when_candidate_outranks_weakest_held(monke
     assert result["new_candidates"][0]["action"] == "new_buy"
 
 
+def test_recommendations_prefer_explicit_swing_score_for_policy(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 78.0)
+    monkeypatch.setattr(config, "PORTFOLIO_REPLACE_SCORE_MARGIN", 8.0)
+    positions = {
+        7: {
+            "netuid": 7,
+            "subnet_name": "Cortex",
+            "category": "Infrastructure",
+            "tao_value": 8.0,
+            "allocation_pct": 0.08,
+        }
+    }
+    snapshots = [
+        make_snapshot(
+            netuid=7,
+            name="Cortex",
+            category="Infrastructure",
+            composite_score=80.0,
+            swing_score=62.0,
+        ),
+        make_snapshot(
+            netuid=14,
+            name="Macro",
+            category="AI Training",
+            composite_score=40.0,
+            swing_score=90.0,
+        ),
+    ]
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={},
+        coverage_netuids={14},
+        milestone_netuids=set(),
+    )
+
+    assert result["new_candidates"][0]["netuid"] == 14
+    assert result["new_candidates"][0]["score"] == pytest.approx(90.0)
+
+
 def test_new_buy_requires_positive_flow_or_strong_catalyst(monkeypatch):
     monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 78.0)
     monkeypatch.setattr(config, "PORTFOLIO_REPLACE_SCORE_MARGIN", 8.0)
@@ -208,6 +248,96 @@ def test_new_buy_requires_positive_flow_or_strong_catalyst(monkeypatch):
     )
 
     assert result["new_candidates"] == []
+
+
+def test_new_buy_is_flagged_unvalidated_and_extended_above_80(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 78.0)
+    monkeypatch.setattr(config, "PORTFOLIO_REPLACE_SCORE_MARGIN", 8.0)
+    monkeypatch.setattr(config, "SWING_SIGNAL_VALIDATED", False)
+    monkeypatch.setattr(config, "SWING_EXTENDED_SCORE", 80.0)
+    positions = {
+        7: {
+            "netuid": 7,
+            "subnet_name": "Cortex",
+            "category": "Infrastructure",
+            "tao_value": 8.0,
+            "allocation_pct": 0.08,
+        }
+    }
+    snapshots = [
+        make_snapshot(netuid=7, name="Cortex", category="Infrastructure", composite_score=62.0),
+        make_snapshot(netuid=14, name="Macro", category="AI Training", composite_score=82.0),
+    ]
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={},
+        coverage_netuids={14},
+        milestone_netuids=set(),
+    )
+
+    rec = result["new_candidates"][0]
+    assert rec["action"] == "new_buy"
+    assert rec["confidence"] == "low"  # unvalidated model caps buy-side confidence
+    assert any("not yet validated" in r for r in rec["reasons"])
+    assert any("mean-revert" in r for r in rec["reasons"])  # 82 is in the inverted 80+ band
+
+
+def test_add_below_80_is_unvalidated_but_not_extended(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_ADD_MIN_SCORE", 75.0)
+    monkeypatch.setattr(config, "PORTFOLIO_TRIM_MAX_ALLOC_PCT", 0.25)
+    monkeypatch.setattr(config, "SWING_SIGNAL_VALIDATED", False)
+    monkeypatch.setattr(config, "SWING_EXTENDED_SCORE", 80.0)
+    positions = {
+        3: {
+            "netuid": 3,
+            "subnet_name": "Templar",
+            "category": "AI Training",
+            "tao_value": 10.0,
+            "allocation_pct": 0.10,
+        }
+    }
+    snapshots = [make_snapshot(netuid=3, composite_score=76.0)]
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={},
+        coverage_netuids={3},
+        milestone_netuids=set(),
+    )
+
+    card = result["table_actions"][3]
+    assert card["action"] == "add"
+    assert card["confidence"] == "low"
+    assert any("not yet validated" in r for r in card["reasons"])
+    assert not any("mean-revert" in r for r in card["reasons"])  # 76 is below the extended band
+
+
+def test_risk_driven_sell_confidence_is_not_downgraded(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_TRIM_MAX_ALLOC_PCT", 0.25)
+    monkeypatch.setattr(config, "SWING_SIGNAL_VALIDATED", False)
+    positions = {
+        21: {
+            "netuid": 21,
+            "subnet_name": "Vector",
+            "category": "Infrastructure",
+            "tao_value": 12.0,
+            "allocation_pct": 0.30,
+        }
+    }
+    snapshots = [make_snapshot(netuid=21, name="Vector", category="Infrastructure", composite_score=41.0)]
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={21: {"liquidity_floor", "tao_outflow"}},
+        coverage_netuids=set(),
+        milestone_netuids=set(),
+    )
+
+    card = result["table_actions"][21]
+    assert card["action"] == "sell"
+    assert card["confidence"] == "high"  # rule-based risk action, not score-prediction-driven
+    assert not any("validated" in r for r in card["reasons"])
 
 
 def test_trim_on_weak_swing_score_and_outflow_risk(monkeypatch):

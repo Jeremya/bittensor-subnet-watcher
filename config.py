@@ -58,6 +58,8 @@ WALLET_LABELS: list[str] = [l.strip() for l in os.getenv("WALLET_LABELS", "").sp
 # ── Bittensor ────────────────────────────────────────────────────────────────
 BITTENSOR_NETWORK: str = "finney"
 BLOCKS_PER_DAY: int = 7200
+TRADABILITY_REFERENCE_TAO: float = 10.0   # standardized round-trip size for slippage estimates
+TRADABILITY_SLIPPAGE_BLOCK_PCT: float = 0.10  # >10% expected exit slippage blocks new buys
 X_SCRAPE_MAX_PER_CYCLE: int = 30            # max subnets per XCollector run
 X_SCRAPE_DELAY_SECONDS: float = 2.0         # delay between X scrapes
 
@@ -86,6 +88,19 @@ PORTFOLIO_ADD_MIN_SCORE: float = 75.0
 PORTFOLIO_NEW_BUY_MIN_SCORE: float = 78.0
 PORTFOLIO_REPLACE_SCORE_MARGIN: float = 8.0
 PORTFOLIO_HOLD_FLOOR_SCORE: float = 55.0
+
+# ── Calibration gate ───────────────────────────────────────────────────────────
+# The swing model has not been validated against forward returns yet (swing_score
+# has no persisted history — see scripts/backtest_signals.py). Until it is, buy-side
+# recommendations are flagged as unvalidated and confidence is capped. The first
+# backtest of the legacy composite_score showed scores above ~80 mean-revert over
+# 14d, so buy-side cards at/above SWING_EXTENDED_SCORE carry an explicit caution.
+SWING_SIGNAL_VALIDATED: bool = False
+SWING_EXTENDED_SCORE: float = 80.0
+
+# ── Tradability scoring ──────────────────────────────────────────────────────
+TRADABILITY_REFERENCE_TAO: float = 5.0           # reference swing trade size
+TRADABILITY_MAX_SLIPPAGE_PCT: float = 8.0        # beyond this, new buys are blocked
 
 
 def validate_config() -> None:

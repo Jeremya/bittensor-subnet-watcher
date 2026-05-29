@@ -78,6 +78,25 @@ class ChainCollector:
                 price_tao = dyn.price.tao
                 mcap_tao = total_alpha * price_tao
                 mcap_usd = (mcap_tao * tao_usd) if tao_usd is not None else None
+                reference_trade_tao = config.TRADABILITY_REFERENCE_TAO
+                buy_slippage_pct = None
+                sell_slippage_pct = None
+                try:
+                    buy_slippage_pct = dyn.tao_to_alpha_with_slippage(
+                        reference_trade_tao,
+                        percentage=True,
+                    )
+                    reference_alpha = dyn.tao_to_alpha(reference_trade_tao)
+                    sell_slippage_pct = dyn.alpha_to_tao_with_slippage(
+                        reference_alpha,
+                        percentage=True,
+                    )
+                except Exception as exc:
+                    logger.debug(
+                        "[COLLECTOR] tradability_slippage_failed netuid=%s error=%s",
+                        getattr(dyn, "netuid", "?"),
+                        exc,
+                    )
 
                 snap = SubnetSnapshot(
                     netuid=dyn.netuid,
@@ -87,6 +106,8 @@ class ChainCollector:
                     alpha_mcap_usd=mcap_usd,
                     tao_in_tao=tao_in,
                     volume_24h_alpha=dyn.subnet_volume.tao,
+                    buy_slippage_pct=buy_slippage_pct,
+                    sell_slippage_pct=sell_slippage_pct,
                     tao_usd_price=tao_usd,
                     daily_emission_tao=daily_em,
                     owner_coldkey=getattr(dyn, "owner_coldkey", None),

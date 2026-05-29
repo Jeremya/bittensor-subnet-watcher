@@ -1,15 +1,13 @@
 from collections import defaultdict
 from typing import Any
 
-import config
+from engine.policy import (
+    build_signal_from_snapshot as _build_signal_from_snapshot,
+    action_for_new_candidate as _policy_new_candidate,
+    action_for_position as _policy_action,
+)
+from engine.signals import SwingSignal
 
-SEVERE_SELL_ALERTS = {"emission_near_zero", "liquidity_floor"}
-MODERATE_SELL_ALERTS = {
-    "ownership_transfer",
-    "hyperparameter_change",
-    "tao_outflow",
-    "dead_github",
-}
 ACTION_PRIORITY = {
     "sell": 0,
     "trim": 1,
@@ -128,44 +126,11 @@ def build_portfolio_ledger(rows: list[dict[str, Any]],
     }
 
 
-def _has_positive_catalyst(snapshot: dict[str, Any],
-                           alert_types: set[str],
-                           covered: bool,
-                           has_milestone: bool) -> bool:
-    return (
-        "convergence" in alert_types
-        or "milestone" in alert_types
-        or covered
-        or has_milestone
-        or (snapshot.get("momentum_score") or 0.0) >= 70.0
-    )
-
-
-def _has_positive_confirmation(snapshot: dict[str, Any],
-                               alert_types: set[str],
-                               covered: bool,
-                               has_milestone: bool) -> bool:
-    return _has_positive_catalyst(snapshot, alert_types, covered, has_milestone)
-
-
-def _has_thesis_break(snapshot: dict[str, Any], alert_types: set[str]) -> bool:
-    if SEVERE_SELL_ALERTS & alert_types:
-        return True
-    moderate_count = len(MODERATE_SELL_ALERTS & alert_types)
-    return (
-        moderate_count >= 2
-        and (snapshot.get("composite_score") or 0.0) < config.PORTFOLIO_HOLD_FLOOR_SCORE
-    )
-
-
-def _is_illiquid(snapshot: dict[str, Any]) -> bool:
-    """Real-time liquidity check — don't wait for the alert to have fired."""
-    volume = snapshot.get("volume_24h_alpha")
-    price = snapshot.get("alpha_price_tao")
-    mcap = snapshot.get("alpha_mcap_tao")
-    if not volume or not price or not mcap:
-        return False  # no data → can't determine, don't block
-    return (volume * price) / mcap < config.LIQUIDITY_FLOOR_RATIO
+def _score(snapshot: dict[str, Any]) -> float | None:
+    explicit = snapshot.get("swing_score")
+    if explicit is not None:
+        return explicit
+    return snapshot.get("composite_score")
 
 
 def _card(snapshot: dict[str, Any],
@@ -179,7 +144,7 @@ def _card(snapshot: dict[str, Any],
         "action": action,
         "confidence": confidence,
         "reasons": reasons,
-        "score": snapshot.get("composite_score"),
+        "score": _score(snapshot),
         "category": snapshot.get("category") or "Other",
         "allocation_pct": allocation_pct,
     }
@@ -211,7 +176,7 @@ def build_portfolio_recommendations(
 
     weakest_held_score = (
         min(
-            (snapshots_by_netuid.get(netuid, {}).get("composite_score") or 0.0)
+            (_score(snapshots_by_netuid.get(netuid, {})) or 0.0)
             for netuid in positions_by_netuid
         )
         if positions_by_netuid
@@ -227,127 +192,62 @@ def build_portfolio_recommendations(
             "name": position["subnet_name"],
             "category": position["category"],
             "composite_score": None,
+            "swing_score": None,
             "momentum_score": None,
         })
         alert_types = alert_types_by_netuid.get(netuid, set())
-        catalyst = _has_positive_confirmation(
+        signal = _build_signal_from_snapshot(
             snapshot,
             alert_types,
             netuid in coverage_netuids,
             netuid in milestone_netuids,
         )
-        score = snapshot.get("composite_score") or 0.0
 
-        if _has_thesis_break(snapshot, alert_types):
-            card = _card(
-                snapshot,
-                "sell",
-                "high",
-                ["thesis break: severe or repeated risk alerts"],
-                position["allocation_pct"],
-            )
-            table_actions[netuid] = card
-            portfolio_actions.append(card)
-            continue
-
-        if position["allocation_pct"] >= config.PORTFOLIO_TRIM_MAX_ALLOC_PCT:
-            reasons = [f"position is {position['allocation_pct'] * 100:.1f}% of book"]
-            if not catalyst:
-                reasons.append("no fresh positive catalyst")
-            card = _card(
-                snapshot,
-                "trim",
-                "high",
-                reasons,
-                position["allocation_pct"],
-            )
-            table_actions[netuid] = card
-            portfolio_actions.append(card)
-            continue
-
-        if (
-            score >= config.PORTFOLIO_ADD_MIN_SCORE
-            and catalyst
-            and category_allocations[position["category"]] < config.PORTFOLIO_CATEGORY_MAX_ALLOC_PCT
-        ):
-            card = _card(
-                snapshot,
-                "add",
-                "medium",
-                ["strong held winner with room to add"],
-                position["allocation_pct"],
-            )
-            table_actions[netuid] = card
-            portfolio_actions.append(card)
-            continue
-
-        if (
-            score < config.PORTFOLIO_HOLD_FLOOR_SCORE
-            and (
-                "tao_outflow" in alert_types
-                or (snapshot.get("momentum_score") or 0.0) < 40.0
-            )
-        ):
-            card = _card(
-                snapshot,
-                "trim",
-                "medium",
-                ["swing score deteriorating with outflow risk"],
-                position["allocation_pct"],
-            )
-            table_actions[netuid] = card
-            portfolio_actions.append(card)
-            continue
-
-        table_actions[netuid] = _card(
-            snapshot,
-            "hold",
-            "low",
-            [],
-            position["allocation_pct"],
+        policy = _policy_action(
+            signal,
+            allocation_pct=position["allocation_pct"],
+            category_allocation_pct=category_allocations[position["category"]],
         )
+        action = policy["action"]
+        confidence = policy["confidence"]
+        reasons = policy["reasons"]
+        card = _card(snapshot, action, confidence, reasons, position["allocation_pct"])
+        table_actions[netuid] = card
+        if action != "hold":
+            portfolio_actions.append(card)
 
     new_candidates: list[dict[str, Any]] = []
     for snapshot in sorted(
         snapshots,
-        key=lambda snap: snap.get("composite_score") or 0.0,
+        key=lambda snap: _score(snap) or 0.0,
         reverse=True,
     ):
         netuid = snapshot["netuid"]
         if netuid in positions_by_netuid:
             continue
-        score = snapshot.get("composite_score") or 0.0
-        if score < config.PORTFOLIO_NEW_BUY_MIN_SCORE:
-            continue
-        if score < weakest_held_score + config.PORTFOLIO_REPLACE_SCORE_MARGIN:
-            continue
 
         alert_types = alert_types_by_netuid.get(netuid, set())
-        if _has_thesis_break(snapshot, alert_types):
-            continue
-
-        if _is_illiquid(snapshot):
-            continue
-
         category = snapshot.get("category") or "Other"
-        if category_allocations[category] >= config.PORTFOLIO_CATEGORY_MAX_ALLOC_PCT:
-            continue
-
-        catalyst = _has_positive_confirmation(
+        signal = _build_signal_from_snapshot(
             snapshot,
             alert_types,
             netuid in coverage_netuids,
             netuid in milestone_netuids,
         )
-        if not catalyst:
+        policy = _policy_new_candidate(
+            signal,
+            weakest_held_score=weakest_held_score,
+            category_allocation_pct=category_allocations[category],
+        )
+        if policy is None:
             continue
 
         new_candidates.append(
             _card(
                 snapshot,
-                "new_buy",
-                "medium",
-                ["outranks weakest held name with a fresh catalyst"],
+                policy["action"],
+                policy["confidence"],
+                policy["reasons"],
                 None,
             )
         )

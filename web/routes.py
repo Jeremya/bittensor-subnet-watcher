@@ -1,7 +1,7 @@
 # web/routes.py
 import aiosqlite
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import config
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -15,7 +15,7 @@ from db.database import (
     get_milestones_for_netuid,
     get_latest_snapshots, get_last_50_alerts,
     get_latest_snapshots_with_registry, get_emission_rank_24h_ago,
-    has_active_analyst_coverage,
+    get_collector_state,
     get_subnet_detail, get_alerts_for_netuid, get_snapshots_for_netuid,
     get_owner_change_counts, get_reg_cost_7d_ago,
     get_portfolio_positions, get_staked_netuids,
@@ -28,6 +28,7 @@ from engine.recommendations import (
     build_portfolio_ledger,
     build_portfolio_recommendations,
 )
+from engine.policy import build_signal_from_snapshot, verdict_for_subnet
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -36,14 +37,40 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 def create_app(db: aiosqlite.Connection) -> FastAPI:
     app = FastAPI(title="TAO Monitor")
 
+    def _parse_utc(value: str | None) -> datetime | None:
+        if value is None:
+            return None
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request):
         snapshots = await get_latest_snapshots_with_registry(db)
         alerts = await get_last_50_alerts(db)
         trend_raw = await get_emission_rank_24h_ago(db)
-        last_poll = snapshots[0]["polled_at"] if snapshots else None
+        now_utc = datetime.now(timezone.utc)
+        parsed_polls = [dt for dt in (_parse_utc(s["polled_at"]) for s in snapshots) if dt is not None]
+        last_poll = max(parsed_polls).isoformat() if parsed_polls else None
+        freshness_cutoff = now_utc - timedelta(minutes=config.POLL_INTERVAL_MINUTES * 2)
+        stale_subnets = 0
+        signal_ready = 0
+        newest_age_minutes = None
+        if parsed_polls:
+            newest_age_minutes = round((now_utc - max(parsed_polls)).total_seconds() / 60, 1)
+        for snap in snapshots:
+            polled_at = _parse_utc(snap["polled_at"])
+            if polled_at is None:
+                continue
+            if polled_at < freshness_cutoff:
+                stale_subnets += 1
+            if snap["swing_score"] is not None:
+                signal_ready += 1
         staked_netuids = await get_staked_netuids(db)
         coverage_netuids = await get_covered_netuids(db, config.ANALYST_COVERAGE_DECAY_HOURS)
+        milestone_arxiv_check = await get_collector_state(db, "milestone_last_arxiv_check")
+        milestone_hf_check = await get_collector_state(db, "milestone_last_hf_check")
 
         sorted_by_mcap = sorted(
             [s for s in snapshots if s["alpha_mcap_tao"] is not None],
@@ -76,6 +103,15 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             for snap in enriched
             if snap.get("category") and snap["category"] != "Other"
         })
+        data_health = {
+            "fresh_subnets": len(snapshots) - stale_subnets,
+            "stale_subnets": stale_subnets,
+            "signal_coverage_pct": round(signal_ready / len(snapshots) * 100, 1) if snapshots else None,
+            "newest_age_minutes": newest_age_minutes,
+            "analyst_coverage_count": len(coverage_netuids),
+            "milestone_arxiv_check": milestone_arxiv_check,
+            "milestone_hf_check": milestone_hf_check,
+        }
 
         return templates.TemplateResponse(request, "index.html", {
             "snapshots": enriched,
@@ -83,6 +119,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             "last_poll": last_poll,
             "subnet_count": len(snapshots),
             "all_categories": all_categories,
+            "data_health": data_health,
         })
 
     @app.get("/subnet/{netuid}", response_class=HTMLResponse)
@@ -96,6 +133,29 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         milestones = await get_milestones_for_netuid(db, netuid, limit=10)
         all_snaps = await get_latest_snapshots_with_registry(db)
         total = len(all_snaps)
+        alert_types_by_netuid = await get_recent_alert_types_per_netuid(
+            db,
+            [
+                "convergence",
+                "milestone",
+                "analyst_mention",
+                "liquidity_floor",
+                "emission_near_zero",
+                "ownership_transfer",
+                "hyperparameter_change",
+                "tao_outflow",
+                "dead_github",
+            ],
+            config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS,
+        )
+        covered_netuids = await get_active_analyst_coverage_netuids(
+            db,
+            config.ANALYST_COVERAGE_DECAY_HOURS,
+        )
+        milestone_netuids = await get_recent_milestone_netuids(
+            db,
+            config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS,
+        )
 
         sorted_by_mcap = sorted(
             [s for s in all_snaps if s["alpha_mcap_tao"] is not None],
@@ -225,24 +285,13 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
 
         # ── Verdict ───────────────────────────────────────────────────────────
         # Single 1-2 week swing call for the investor: entry / caution / exit / risk
-        if owner_n >= 3:
-            verdict = f"Governance risk — {owner_n} ownership changes in 30 days"
-        elif momentum_state == "fragile":
-            verdict = "Fragile — capital exiting despite rising emission rank"
-        elif momentum_state == "distributing" and yield_state in ("overpriced", "rich"):
-            verdict = "Exit candidate — overpriced and capital leaving"
-        elif momentum_state == "distributing":
-            verdict = "Caution — capital outflow, monitor emission rank"
-        elif yield_state == "underpriced" and momentum_state == "accumulating":
-            verdict = "Entry signal — underpriced yield with capital accumulating"
-        elif yield_state in ("underpriced", "discount") and momentum_state == "early_inflow":
-            verdict = "Potential entry — discount yield, inflow building"
-        elif yield_state in ("overpriced", "rich") and momentum_state != "accumulating":
-            verdict = "Avoid — priced above emission contribution"
-        elif health_risks:
-            verdict = f"Risk flag — {health_risks[0]}"
-        else:
-            verdict = "Monitor — no strong entry or exit signal"
+        signal = build_signal_from_snapshot(
+            dict(snap),
+            alert_types_by_netuid.get(netuid, set()),
+            netuid in covered_netuids,
+            netuid in milestone_netuids,
+        )
+        verdict = verdict_for_subnet(signal)
 
         hype_why = "no social data"
         hype_parts = []

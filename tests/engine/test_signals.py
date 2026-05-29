@@ -91,6 +91,32 @@ def test_tradability_score_blocks_illiquid_subnet():
     assert "liquidity below swing threshold" in illiquid.risks
 
 
+def test_tradability_score_uses_slippage_when_available():
+    tight = compute_tradability_score(
+        make_snap(
+            buy_slippage_pct=0.75,
+            sell_slippage_pct=0.9,
+            volume_24h_alpha=10_000.0,
+            alpha_price_tao=0.01,
+            alpha_mcap_tao=100_000.0,
+        )
+    )
+    wide = compute_tradability_score(
+        make_snap(
+            buy_slippage_pct=9.5,
+            sell_slippage_pct=12.0,
+            volume_24h_alpha=10_000.0,
+            alpha_price_tao=0.01,
+            alpha_mcap_tao=100_000.0,
+        )
+    )
+
+    assert tight.score > wide.score
+    assert "low slippage on 5 TAO swing trade" in tight.reasons
+    assert wide.blocks_new_buy
+    assert any("slippage above" in risk for risk in wide.risks)
+
+
 def test_catalyst_score_weights_convergence_highest():
     score = compute_catalyst_score(
         {"convergence", "analyst_mention", "github_spike"},

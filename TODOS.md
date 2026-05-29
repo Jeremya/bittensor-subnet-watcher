@@ -1,15 +1,67 @@
 # TODOS
 
-## P1 — Calibration Follow-up
+## P0 — Calibration Gate (active)
 
-### Backtest swing signals over 7d/14d forward windows
-**What:** Replay historical snapshots and measure whether high swing scores, catalysts,
-sell/trim alerts, and flow reversals predict 7d/14d forward TAO returns.
+### ✅ Backtest runner + first calibration run — DONE (2026-05-29)
+**What:** `scripts/backtest_signals.py` runs `engine/backtest.py` over the live DB, reports
+score-field coverage (swing vs composite), prints a bucket table, and can write JSON.
+First run committed to memory + `data/backtest_composite_2026-05.json`.
 
-**Why:** The signal refactor encodes the current Taoflow thesis, but thresholds still need
-empirical calibration before recommendations should be treated as decision-grade.
+**First result (legacy `composite_score`, 30 days — `swing_score` has NO history yet):**
+score predicts in the 60–80 band (~60% 7d/14d win-rate) but **inverts above 80** (14d median
+−11.3%, 3% win-rate, n=31). Use median + win-rate, not mean (means inflated by lottery pumps).
 
-**Effort:** M
+### ✅ Gate the UI on calibration state — DONE (2026-05-29)
+Buy-side recs (`add`/`new_buy`) now carry `confidence="low"` + "swing model not yet validated"
+while `config.SWING_SIGNAL_VALIDATED=False`, and an "extended / mean-reverts" caution at/above
+`config.SWING_EXTENDED_SCORE`. Risk-driven `sell`/`trim` unchanged. Decision logic NOT tuned.
+
+### ⏭️ NEXT: get swing_score history, then re-run + flip the gate
+**What:** Restart the monitor so the new signal columns populate. After ~30 days of real
+`swing_score` data, re-run `scripts/backtest_signals.py` (it auto-detects swing coverage).
+Only then consider setting `SWING_SIGNAL_VALIDATED=True` and/or tuning thresholds — and only
+if buckets separate. Do NOT tune off the legacy-composite single-window result.
+**Effort:** S to re-run · **Priority:** P0 · **Depends on:** monitor uptime + 30d history
+
+---
+
+### Persist explicit signal columns
+**What:** Add to `snapshots` table: `flow_score`, `relative_value_score`,
+`tradability_score`, `catalyst_score`, `risk_penalty`, `swing_score`. Write them in
+`engine/scorer.py` after `compute_swing_signal()`. Add migration path in `db/database.py`.
+
+**Why:** Enables backtesting over historical data, richer `/api/snapshots` responses, and
+lets the portfolio route read pre-computed signal fields from DB instead of recomputing them
+at request time (which currently requires loading history per subnet).
+
+**Depends on:** Tasks 1+4 (wire context + unify policy) merged first so signal values are
+stabilized before you start logging them.
+
+**Where to start:** `db/database.py` `SCHEMA_SQL`, migration `ADD COLUMN` block, then
+`engine/scorer.py` after `swing = compute_swing_signal(...)`.
+
+**Effort:** S (2 hours)
+**Priority:** P1
+
+---
+
+### Slippage-based tradability
+**What:** Capture `alpha_in_tao` and `alpha_out_tao` pool reserve fields in
+`collectors/chain.py`. Add a reserve-based slippage estimate to `compute_tradability_score()`
+in `engine/signals.py`: for a configurable trade size, estimate price impact via the
+constant-product AMM formula (`trade_size / (alpha_in_tao + trade_size)`). If estimated
+slippage exceeds a threshold, lower the tradability score even when 24h volume looks fine.
+
+**Why:** A subnet with 10 TAO daily volume looks "tradable" by turnover ratio, but exiting
+a 50-TAO position would move the price 10%. Volume turnover is a bad proxy for large-position
+exit cost. SN96-class situations (high emission rank, near-zero reserves) would be caught.
+
+**Depends on:** Nothing — fully independent of other deferred work.
+
+**Where to start:** `collectors/chain.py` (add reserve fields to `SubnetSnapshot`),
+`engine/signals.py` `compute_tradability_score()`, then `tests/engine/test_signals.py`.
+
+**Effort:** S–M (3–4 hours)
 **Priority:** P1
 
 ---

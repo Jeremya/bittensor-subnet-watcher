@@ -42,6 +42,8 @@ async def test_dashboard_empty_state(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/")
     assert "Waiting for first poll" in resp.text or "No alerts yet" in resp.text
+    assert "Fresh subnets" in resp.text
+    assert "Signal coverage" in resp.text
 
 
 async def test_api_snapshots_returns_json(app, db):
@@ -177,6 +179,28 @@ async def test_dashboard_shows_category_and_coverage_badges(app, db):
     assert "AI Training" in resp.text
     assert "📡" in resp.text
     assert "/analysts" in resp.text
+
+
+async def test_dashboard_shows_freshness_panel(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(
+        db,
+        SubnetSnapshot(
+            netuid=9,
+            polled_at=now,
+            composite_score=70.0,
+            swing_score=70.0,
+            alpha_mcap_tao=2_000.0,
+        ),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/")
+
+    assert resp.status_code == 200
+    assert "Fresh subnets" in resp.text
+    assert "Signal coverage" in resp.text
+    assert "Analyst coverage" in resp.text
 
 
 async def test_subnet_detail_shows_milestones_mentions_and_category_form(app, db):

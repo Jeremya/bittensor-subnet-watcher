@@ -75,6 +75,17 @@ def _flow_rate(rows: list[SubnetSnapshot], pool: float) -> Optional[float]:
     return sum(flows) / pool
 
 
+def _turnover_ratio(snap: SubnetSnapshot) -> Optional[float]:
+    if (
+        snap.volume_24h_alpha is None
+        or snap.alpha_price_tao is None
+        or snap.alpha_mcap_tao is None
+        or snap.alpha_mcap_tao <= 0
+    ):
+        return None
+    return (snap.volume_24h_alpha * snap.alpha_price_tao) / snap.alpha_mcap_tao
+
+
 def compute_flow_score(
     snap: SubnetSnapshot,
     history: list[SubnetSnapshot],
@@ -212,22 +223,62 @@ def compute_relative_value_scores(
 
 
 def compute_tradability_score(snap: SubnetSnapshot) -> SignalComponent:
-    if (
-        snap.volume_24h_alpha is None
-        or snap.alpha_price_tao is None
-        or snap.alpha_mcap_tao is None
-        or snap.alpha_mcap_tao <= 0
-    ):
+    turnover = _turnover_ratio(snap)
+    slippages = [
+        value for value in (snap.buy_slippage_pct, snap.sell_slippage_pct)
+        if value is not None
+    ]
+
+    if turnover is None and not slippages:
         return SignalComponent(score=None, risks=["missing liquidity data"])
 
-    turnover = (snap.volume_24h_alpha * snap.alpha_price_tao) / snap.alpha_mcap_tao
-    if turnover < config.LIQUIDITY_FLOOR_RATIO:
+    if turnover is not None and turnover < config.LIQUIDITY_FLOOR_RATIO:
         return SignalComponent(
             score=10.0,
             risks=["liquidity below swing threshold"],
             is_negative=True,
             blocks_new_buy=True,
         )
+
+    if slippages:
+        worst_slippage = max(slippages)
+        average_slippage = sum(slippages) / len(slippages)
+        score = 100.0 - (average_slippage * 3.0 + worst_slippage * 2.0)
+        if turnover is not None:
+            score += min(6.0, turnover * 120.0)
+        score = _clamp(score)
+
+        reasons: list[str] = []
+        risks: list[str] = []
+        if worst_slippage <= 1.0:
+            reasons.append(
+                f"low slippage on {config.TRADABILITY_REFERENCE_TAO:g} TAO swing trade"
+            )
+        elif worst_slippage <= config.TRADABILITY_MAX_SLIPPAGE_PCT:
+            reasons.append(
+                f"manageable slippage on {config.TRADABILITY_REFERENCE_TAO:g} TAO swing trade"
+            )
+        else:
+            risks.append(
+                f"exit slippage above {config.TRADABILITY_MAX_SLIPPAGE_PCT:.1f}% "
+                f"on {config.TRADABILITY_REFERENCE_TAO:g} TAO trade"
+            )
+
+        if turnover is not None:
+            if turnover >= 0.02:
+                reasons.append("strong daily turnover confirms execution depth")
+            elif turnover < config.LIQUIDITY_FLOOR_RATIO:
+                risks.append("daily turnover below swing floor")
+
+        return SignalComponent(
+            score=round(score, 2),
+            reasons=reasons,
+            risks=risks,
+            is_positive=score >= 65.0,
+            is_negative=score < 45.0 or worst_slippage > config.TRADABILITY_MAX_SLIPPAGE_PCT,
+            blocks_new_buy=worst_slippage > config.TRADABILITY_MAX_SLIPPAGE_PCT,
+        )
+
     if turnover >= 0.05:
         score = 95.0
     elif turnover >= 0.02:

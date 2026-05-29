@@ -56,6 +56,16 @@
     .alert-item .type { font-weight: bold; color: #00d4aa; }
     .alert-item .time { color: #666; font-size: 0.75rem; }
     .empty { color: #555; font-style: italic; padding: 20px 0; }
+    .health-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+                    gap: 8px; padding: 12px 20px 0; }
+    .health-cell { background: #111; border: 1px solid #222; border-radius: 4px;
+                   padding: 8px 10px; min-height: 54px; }
+    .health-label { display: block; color: #666; font-size: 0.65rem;
+                    text-transform: uppercase; letter-spacing: 0.5px; }
+    .health-value { display: block; margin-top: 4px; color: #e0e0e0; font-size: 0.9rem; }
+    .health-value.good { color: #00c853; }
+    .health-value.warn { color: #ffd600; }
+    .health-value.bad { color: #ff5252; }
   </style>
 </head>
 <body>
@@ -75,6 +85,39 @@
   <a href="/analysts" style="margin-left:auto; color:#00d4aa; font-size:0.85rem; text-decoration:none;">Analysts ↗</a>
   <a href="/portfolio" style="margin-left:auto; color:#00d4aa; font-size:0.85rem; text-decoration:none;">Portfolio ↗</a>
 </header>
+<div class="health-strip">
+  <div class="health-cell">
+    <span class="health-label">Fresh subnets</span>
+    <span class="health-value good">{{ data_health.fresh_subnets if data_health else "—" }}</span>
+  </div>
+  <div class="health-cell">
+    <span class="health-label">Stale subnets</span>
+    <span class="health-value {{ 'bad' if data_health and data_health.stale_subnets else 'good' }}">{{ data_health.stale_subnets if data_health else "—" }}</span>
+  </div>
+  <div class="health-cell">
+    <span class="health-label">Signal coverage</span>
+    <span class="health-value {{ 'good' if data_health and data_health.signal_coverage_pct is not none and data_health.signal_coverage_pct >= 80 else ('warn' if data_health and data_health.signal_coverage_pct is not none and data_health.signal_coverage_pct >= 50 else 'bad') }}">
+      {{ ("%.1f"|format(data_health.signal_coverage_pct) ~ "%") if data_health and data_health.signal_coverage_pct is not none else "—" }}
+    </span>
+  </div>
+  <div class="health-cell">
+    <span class="health-label">Freshness age</span>
+    <span class="health-value {{ 'good' if data_health and data_health.newest_age_minutes is not none and data_health.newest_age_minutes <= 30 else ('warn' if data_health and data_health.newest_age_minutes is not none and data_health.newest_age_minutes <= 60 else 'bad') }}">
+      {{ ("%.0f"|format(data_health.newest_age_minutes) ~ "m") if data_health and data_health.newest_age_minutes is not none else "—" }}
+    </span>
+  </div>
+  <div class="health-cell">
+    <span class="health-label">Analyst coverage</span>
+    <span class="health-value">{{ data_health.analyst_coverage_count if data_health else "—" }}</span>
+  </div>
+  <div class="health-cell">
+    <span class="health-label">Milestone scans</span>
+    <span class="health-value">
+      {{ "A:" ~ data_health.milestone_arxiv_check if data_health and data_health.milestone_arxiv_check else "A:—" }}
+      · {{ "H:" ~ data_health.milestone_hf_check if data_health and data_health.milestone_hf_check else "H:—" }}
+    </span>
+  </div>
+</div>
 <div class="layout">
   <div class="sidebar">
     <h3>Category</h3>

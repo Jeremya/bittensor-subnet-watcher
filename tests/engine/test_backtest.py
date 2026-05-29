@@ -1,0 +1,49 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from engine.backtest import run_backtest
+from models import SubnetSnapshot
+
+
+def make_snap(netuid: int, *, days_ago: int, **overrides) -> SubnetSnapshot:
+    data = {
+        "netuid": netuid,
+        "polled_at": datetime.now(timezone.utc) - timedelta(days=days_ago),
+        "alpha_price_tao": 1.0,
+    }
+    data.update(overrides)
+    return SubnetSnapshot(**data)
+
+
+def test_backtest_buckets_and_forward_returns():
+    rows = [
+        make_snap(1, days_ago=14, swing_score=85.0, alpha_price_tao=1.0),
+        make_snap(1, days_ago=7, alpha_price_tao=1.2),
+        make_snap(1, days_ago=0, alpha_price_tao=1.5),
+        make_snap(2, days_ago=14, swing_score=65.0, alpha_price_tao=2.0),
+        make_snap(2, days_ago=7, alpha_price_tao=1.8),
+        make_snap(2, days_ago=0, alpha_price_tao=1.6),
+    ]
+
+    report = run_backtest(rows)
+
+    assert report["row_count"] == 6
+    assert report["anchor_count"] == 2
+    assert report["horizons_hours"] == [168, 336]
+    assert report["buckets"]["80+"]["anchors"] == 1
+    assert report["buckets"]["80+"]["forward_7d"]["samples"] == 1
+    assert report["buckets"]["80+"]["forward_7d"]["mean_return"] == pytest.approx(0.2)
+    assert report["buckets"]["80+"]["forward_14d"]["mean_return"] == pytest.approx(0.5)
+    assert report["buckets"]["60-70"]["anchors"] == 1
+    assert report["buckets"]["60-70"]["forward_7d"]["mean_return"] == pytest.approx(-0.1)
+    assert report["buckets"]["60-70"]["forward_14d"]["mean_return"] == pytest.approx(-0.2)
+
+
+def test_backtest_returns_json_friendly_structure():
+    report = run_backtest([])
+
+    assert isinstance(report["generated_at"], str)
+    assert report["row_count"] == 0
+    assert report["anchor_count"] == 0
+    assert set(report["buckets"]) == {"<50", "50-60", "60-70", "70-80", "80+"}
