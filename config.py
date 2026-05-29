@@ -50,7 +50,6 @@ REG_COST_CHANGE_PCT: float = 0.50           # reg cost moves ±50% = hyperparame
 ALERT_COOLDOWN_HOURS: int = 6               # max 1 alert per subnet per type per 6h
 HEALTH_CHECK_NONE_THRESHOLD: float = 0.50   # warn if >50% subnets have None emission
 
-# ── Bittensor ────────────────────────────────────────────────────────────────
 # ── Portfolio tracking ────────────────────────────────────────────────────────
 WALLET_COLDKEYS: list[str] = [k.strip() for k in os.getenv("WALLET_COLDKEYS", "").split(",") if k.strip()]
 WALLET_LABELS: list[str] = [l.strip() for l in os.getenv("WALLET_LABELS", "").split(",") if l.strip()]
@@ -58,8 +57,6 @@ WALLET_LABELS: list[str] = [l.strip() for l in os.getenv("WALLET_LABELS", "").sp
 # ── Bittensor ────────────────────────────────────────────────────────────────
 BITTENSOR_NETWORK: str = "finney"
 BLOCKS_PER_DAY: int = 7200
-TRADABILITY_REFERENCE_TAO: float = 10.0   # standardized round-trip size for slippage estimates
-TRADABILITY_SLIPPAGE_BLOCK_PCT: float = 0.10  # >10% expected exit slippage blocks new buys
 X_SCRAPE_MAX_PER_CYCLE: int = 30            # max subnets per XCollector run
 X_SCRAPE_DELAY_SECONDS: float = 2.0         # delay between X scrapes
 

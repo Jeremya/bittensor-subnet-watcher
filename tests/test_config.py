@@ -27,3 +27,23 @@ def test_scoring_weights_sum_to_one():
     import config
     total = config.YIELD_WEIGHT + config.HEALTH_WEIGHT + config.MOMENTUM_WEIGHT
     assert abs(total - 1.0) < 1e-9
+
+
+def test_config_has_no_duplicate_module_level_definitions():
+    import ast
+    import pathlib
+
+    source = pathlib.Path(__file__).resolve().parent.parent / "config.py"
+    tree = ast.parse(source.read_text())
+
+    names: list[str] = []
+    for node in tree.body:  # module level only
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.append(node.target.id)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names.append(target.id)
+
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    assert duplicates == [], f"duplicate config definitions: {duplicates}"
