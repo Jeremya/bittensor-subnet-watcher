@@ -100,6 +100,17 @@ SWING_EXTENDED_SCORE: float = 80.0
 TRADABILITY_REFERENCE_TAO: float = 5.0           # reference swing trade size
 TRADABILITY_MAX_SLIPPAGE_PCT: float = 8.0        # beyond this, new buys are blocked
 
+# ── Emergence track (watch-only; never feeds buy recommendations) ───────────
+EMERGENCE_MAX_MCAP_USD: float = 2_000_000.0
+EMERGENCE_WINDOW_HOURS: int = 72
+EMERGENCE_NASCENT_AGE_DAYS: float = 14.0
+EMERGENCE_ACCELERATING_AGE_DAYS: float = 45.0
+EMERGENCE_REG_DEMAND_WEIGHT: float = 0.35
+EMERGENCE_SLOT_FILL_WEIGHT: float = 0.30
+EMERGENCE_FLOW_ACCEL_WEIGHT: float = 0.35
+EMERGENCE_WATCH_SCORE: float = 70.0
+EMERGENCE_WATCH_COOLDOWN_HOURS: int = 24
+
 
 def validate_config() -> None:
     """Fail fast at startup if required env vars are missing."""

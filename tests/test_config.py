@@ -37,6 +37,18 @@ def test_dashboard_host_defaults_to_localhost():
     assert config.DASHBOARD_HOST == "127.0.0.1"
 
 
+def test_emergence_weight_config_sums_to_one():
+    import config
+
+    total = (
+        config.EMERGENCE_REG_DEMAND_WEIGHT
+        + config.EMERGENCE_SLOT_FILL_WEIGHT
+        + config.EMERGENCE_FLOW_ACCEL_WEIGHT
+    )
+    assert abs(total - 1.0) < 1e-9
+    assert config.EMERGENCE_WATCH_SCORE > 0
+
+
 def test_config_has_no_duplicate_module_level_definitions():
     import ast
     import pathlib
