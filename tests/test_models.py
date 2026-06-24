@@ -7,6 +7,8 @@ def test_subnet_snapshot_defaults():
     assert snap.netuid == 1
     assert snap.alpha_price_tao is None
     assert snap.yield_score is None
+    assert snap.emergence_score is None
+    assert snap.emergence_stage is None
 
 
 def test_subnet_snapshot_with_values():
@@ -24,6 +26,24 @@ def test_subnet_snapshot_with_values():
     assert snap.netuid == 64
     assert snap.alpha_price_tao == 0.086
     assert snap.emission_rank == 1
+
+
+def test_subnet_snapshot_with_emergence_scores():
+    now = datetime.now(timezone.utc)
+    snap = SubnetSnapshot(
+        netuid=42,
+        polled_at=now,
+        reg_demand_score=72.0,
+        slot_fill_score=68.0,
+        flow_accel_score=80.0,
+        emergence_score=74.5,
+        emergence_stage="accelerating",
+    )
+    assert snap.reg_demand_score == 72.0
+    assert snap.slot_fill_score == 68.0
+    assert snap.flow_accel_score == 80.0
+    assert snap.emergence_score == 74.5
+    assert snap.emergence_stage == "accelerating"
 
 
 def test_alert_record_defaults():

@@ -50,6 +50,11 @@ class SubnetSnapshot:
     risk_penalty: Optional[float] = None
     swing_score: Optional[float] = None
     composite_score: Optional[float] = None
+    reg_demand_score: Optional[float] = None
+    slot_fill_score: Optional[float] = None
+    flow_accel_score: Optional[float] = None
+    emergence_score: Optional[float] = None
+    emergence_stage: Optional[str] = None
 
 
 @dataclass
