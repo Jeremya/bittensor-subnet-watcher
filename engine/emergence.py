@@ -1,11 +1,24 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import config
 from engine.signals import SignalComponent, _clamp
 from models import SubnetSnapshot
+
+
+@dataclass
+class EmergenceSignal:
+    netuid: int
+    reg_demand: SignalComponent
+    slot_fill: SignalComponent
+    flow_accel: SignalComponent
+    emergence_score: float
+    stage: str
+    reasons: list[str]
 
 
 def _window(history: list[SubnetSnapshot], now: datetime, hours: int) -> list[SubnetSnapshot]:
@@ -127,4 +140,59 @@ def compute_flow_accel_score(
         reasons=reasons,
         is_positive=accel > 0 and late_rate > 0,
         is_strong=accel > 0 and score >= 75.0,
+    )
+
+
+def classify_stage(age_days: float, snap: SubnetSnapshot) -> str:
+    """Classify emergence stage. Caller must provide owner-epoch-scoped age."""
+    if (
+        snap.alpha_mcap_usd is not None
+        and snap.alpha_mcap_usd >= config.EMERGENCE_MAX_MCAP_USD
+    ):
+        return "established"
+    if age_days < config.EMERGENCE_NASCENT_AGE_DAYS:
+        return "nascent"
+    if age_days < config.EMERGENCE_ACCELERATING_AGE_DAYS:
+        return "accelerating"
+    return "maturing"
+
+
+def compute_emergence_signal(
+    snap: SubnetSnapshot,
+    history: list[SubnetSnapshot],
+    first_seen_at: Optional[datetime],
+    now: Optional[datetime] = None,
+) -> EmergenceSignal:
+    now = now or snap.polled_at or datetime.now(timezone.utc)
+    age_days = (
+        (now - first_seen_at).total_seconds() / 86400.0
+        if first_seen_at is not None
+        else 0.0
+    )
+    stage = classify_stage(age_days, snap)
+
+    reg = compute_reg_demand_score(snap, history)
+    slot = compute_slot_fill_score(snap, history)
+    flow = compute_flow_accel_score(snap, history)
+
+    weighted = [
+        (reg.score, config.EMERGENCE_REG_DEMAND_WEIGHT),
+        (slot.score, config.EMERGENCE_SLOT_FILL_WEIGHT),
+        (flow.score, config.EMERGENCE_FLOW_ACCEL_WEIGHT),
+    ]
+    available = [(score, weight) for score, weight in weighted if score is not None]
+    if available:
+        total_weight = sum(weight for _, weight in available)
+        score = sum(score * weight for score, weight in available) / total_weight
+    else:
+        score = 0.0
+
+    return EmergenceSignal(
+        netuid=snap.netuid,
+        reg_demand=reg,
+        slot_fill=slot,
+        flow_accel=flow,
+        emergence_score=round(_clamp(score), 2),
+        stage=stage,
+        reasons=reg.reasons + slot.reasons + flow.reasons,
     )
