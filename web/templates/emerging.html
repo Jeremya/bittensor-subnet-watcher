@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="60">
+  <title>Emerging Subnets - TAO Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; }
+    header { background: #162015; padding: 12px 20px; display: flex;
+             gap: 24px; align-items: center; border-bottom: 1px solid #2f3a2a; }
+    header h1 { font-size: 1.2rem; color: #9be15d; }
+    header span { color: #999; font-size: 0.85rem; }
+    header a { margin-left: auto; color: #9be15d; font-size: 0.85rem; text-decoration: none; }
+    header a:hover { color: #caff8a; }
+    .content { padding: 18px 20px; }
+    .note { color: #777; font-size: 0.78rem; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align: left; padding: 7px 9px; color: #777; border-bottom: 1px solid #333; }
+    td { padding: 7px 9px; border-bottom: 1px solid #1a1a1a; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td { background: #171c14; }
+    .sn-name { color: #9be15d; }
+    .sn-id { color: #555; margin-left: 4px; font-size: 0.9em; }
+    .stage { color: #caff8a; background: #1e2a1a; border: 1px solid #35452f;
+             padding: 2px 6px; border-radius: 3px; }
+    .score-high { color: #00c853; }
+    .score-med { color: #ffd600; }
+    .score-null, .empty { color: #555; }
+    .empty { font-style: italic; padding: 32px 0; text-align: center; }
+  </style>
+</head>
+<body>
+
+{% macro fmt_usd(v) -%}
+{%- if v is none %}-
+{%- elif v >= 1000000 %}${{ "%.1f"|format(v / 1000000) }}M
+{%- elif v >= 1000 %}${{ "%.0f"|format(v / 1000) }}K
+{%- else %}${{ "%.0f"|format(v) }}
+{%- endif %}
+{%- endmacro %}
+
+<header>
+  <h1>Emerging Subnets</h1>
+  <span>watch-only</span>
+  <a href="/">Dashboard</a>
+</header>
+
+<div class="content">
+  <p class="note">Pre-liquid subnets ranked by emergence score. These are not buy recommendations.</p>
+  {% if subnets %}
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Subnet</th>
+        <th>Stage</th>
+        <th>Emergence</th>
+        <th>Reg Demand</th>
+        <th>Slot Fill</th>
+        <th>Flow Accel</th>
+        <th>MCap</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in subnets %}
+      {% set score = row.emergence_score %}
+      {% set cls = "score-high" if score and score >= 70 else ("score-med" if score else "score-null") %}
+      <tr class="clickable" onclick="location.href='/subnet/{{ row.netuid }}'">
+        <td class="score-null">{{ loop.index }}</td>
+        <td>
+          <span class="sn-name">{{ row.name or ("SN" ~ row.netuid) }}</span>
+          <span class="sn-id">SN{{ row.netuid }}</span>
+        </td>
+        <td><span class="stage">{{ row.emergence_stage }}</span></td>
+        <td class="{{ cls }}">{{ "%.0f"|format(row.emergence_score) }}</td>
+        <td>{{ "%.0f"|format(row.reg_demand_score) if row.reg_demand_score is not none else "-" }}</td>
+        <td>{{ "%.0f"|format(row.slot_fill_score) if row.slot_fill_score is not none else "-" }}</td>
+        <td>{{ "%.0f"|format(row.flow_accel_score) if row.flow_accel_score is not none else "-" }}</td>
+        <td>{{ fmt_usd(row.alpha_mcap_usd) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No emerging candidates right now.</p>
+  {% endif %}
+</div>
+</body>
+</html>

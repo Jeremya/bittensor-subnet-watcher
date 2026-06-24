@@ -203,6 +203,45 @@ async def test_dashboard_shows_freshness_panel(app, db):
     assert "Analyst coverage" in resp.text
 
 
+async def test_emerging_page_shows_watch_only_candidates(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(
+        db,
+        SubnetSnapshot(
+            netuid=42,
+            polled_at=now,
+            alpha_mcap_usd=150_000.0,
+            reg_demand_score=80.0,
+            slot_fill_score=70.0,
+            flow_accel_score=75.0,
+            emergence_score=76.0,
+            emergence_stage="nascent",
+        ),
+    )
+    await insert_snapshot(
+        db,
+        SubnetSnapshot(
+            netuid=9,
+            polled_at=now,
+            alpha_mcap_usd=5_000_000.0,
+            emergence_score=90.0,
+            emergence_stage="established",
+        ),
+    )
+    await upsert_registry_entry(db, 42, "Early", None, None, None)
+    await upsert_registry_entry(db, 9, "Established", None, None, None)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/emerging")
+
+    assert resp.status_code == 200
+    assert "Emerging Subnets" in resp.text
+    assert "watch-only" in resp.text
+    assert "Early" in resp.text
+    assert "Established" not in resp.text
+    assert "76" in resp.text
+
+
 async def test_subnet_detail_shows_milestones_mentions_and_category_form(app, db):
     now = datetime.now(timezone.utc)
     await insert_snapshot(

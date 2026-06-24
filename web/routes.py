@@ -358,6 +358,20 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         await remove_analyst_handle(db, handle)
         return RedirectResponse("/analysts", status_code=303)
 
+    @app.get("/emerging", response_class=HTMLResponse)
+    async def emerging(request: Request):
+        rows = [dict(row) for row in await get_latest_snapshots_with_registry(db)]
+        candidates = [
+            row for row in rows
+            if row.get("emergence_score") is not None
+            and row.get("emergence_stage") not in (None, "established")
+        ]
+        candidates.sort(key=lambda row: row["emergence_score"], reverse=True)
+        return templates.TemplateResponse(request, "emerging.html", {
+            "request": request,
+            "subnets": candidates,
+        })
+
     @app.get("/portfolio", response_class=HTMLResponse)
     async def portfolio(request: Request):
         rows = [dict(row) for row in await get_portfolio_positions(db)]
