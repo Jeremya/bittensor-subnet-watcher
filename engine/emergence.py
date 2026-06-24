@@ -88,3 +88,43 @@ def compute_slot_fill_score(
         is_positive=velocity_pts >= 24.0,
         is_strong=velocity_pts >= 48.0,
     )
+
+
+def compute_flow_accel_score(
+    snap: SubnetSnapshot,
+    history: list[SubnetSnapshot],
+    window_hours: int = config.EMERGENCE_WINDOW_HOURS,
+) -> SignalComponent:
+    """Score whether net TAO flow is accelerating across the lookback window."""
+    now = snap.polled_at or datetime.now(timezone.utc)
+    rows = _window(history, now, window_hours)
+    pool = snap.alpha_mcap_tao
+    flows = [
+        (row.polled_at, row.net_tao_flow_tao)
+        for row in rows
+        if row.net_tao_flow_tao is not None
+    ]
+    if len(flows) < 4 or pool is None or pool <= 0:
+        return SignalComponent(score=None, risks=["insufficient flow history"])
+
+    mid = now - timedelta(hours=window_hours / 2)
+    early = [flow for polled_at, flow in flows if polled_at < mid]
+    late = [flow for polled_at, flow in flows if polled_at >= mid]
+    if not early or not late:
+        return SignalComponent(score=None, risks=["flow history not split-able"])
+
+    early_rate = (sum(early) / len(early)) / pool
+    late_rate = (sum(late) / len(late)) / pool
+    accel = late_rate - early_rate
+    score = _clamp(50.0 + max(-50.0, min(50.0, accel * 8000.0)))
+
+    reasons: list[str] = []
+    if accel > 0 and late_rate > 0:
+        reasons.append("net TAO inflow accelerating")
+
+    return SignalComponent(
+        score=round(score, 2),
+        reasons=reasons,
+        is_positive=accel > 0 and late_rate > 0,
+        is_strong=accel > 0 and score >= 75.0,
+    )
