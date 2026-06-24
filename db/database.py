@@ -50,7 +50,12 @@ CREATE TABLE IF NOT EXISTS snapshots (
     catalyst_score     REAL,
     risk_penalty       REAL,
     swing_score        REAL,
-    composite_score    REAL
+    composite_score    REAL,
+    reg_demand_score   REAL,
+    slot_fill_score    REAL,
+    flow_accel_score   REAL,
+    emergence_score    REAL,
+    emergence_stage    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS alerts (
@@ -194,6 +199,11 @@ async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
         ("catalyst_score", "REAL"),
         ("risk_penalty", "REAL"),
         ("swing_score", "REAL"),
+        ("reg_demand_score", "REAL"),
+        ("slot_fill_score", "REAL"),
+        ("flow_accel_score", "REAL"),
+        ("emergence_score", "REAL"),
+        ("emergence_stage", "TEXT"),
     ]:
         if col not in existing_cols:
             await conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {definition}")
@@ -244,8 +254,10 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
             x_last_tweet, x_followers,
             yield_score, health_score, momentum_score, hype_score,
             flow_score, relative_value_score, tradability_score, catalyst_score,
-            risk_penalty, swing_score, composite_score
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            risk_penalty, swing_score, composite_score,
+            reg_demand_score, slot_fill_score, flow_accel_score,
+            emergence_score, emergence_stage
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         snap.netuid, _dt_to_str(snap.polled_at),
         snap.alpha_price_tao, snap.alpha_mcap_tao, snap.alpha_mcap_usd,
@@ -260,6 +272,8 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
         snap.flow_score, snap.relative_value_score, snap.tradability_score,
         snap.catalyst_score, snap.risk_penalty, snap.swing_score,
         snap.composite_score,
+        snap.reg_demand_score, snap.slot_fill_score, snap.flow_accel_score,
+        snap.emergence_score, snap.emergence_stage,
     ))
     await db.commit()
 
@@ -367,8 +381,46 @@ async def get_reg_cost_7d_ago(db: aiosqlite.Connection) -> dict[int, Optional[fl
     return {row["netuid"]: row["reg_cost_tao"] for row in rows}
 
 
+async def get_emergence_age_context(db: aiosqlite.Connection) -> dict[int, datetime]:
+    """Return owner-epoch first-seen timestamps for each netuid."""
+    cursor = await db.execute("""
+        WITH latest_owner AS (
+            SELECT s.netuid,
+                   (
+                       SELECT owner_coldkey
+                       FROM snapshots s2
+                       WHERE s2.netuid = s.netuid
+                       ORDER BY s2.polled_at DESC
+                       LIMIT 1
+                   ) AS cur_owner
+            FROM snapshots s
+            GROUP BY s.netuid
+        ),
+        boundary AS (
+            SELECT s.netuid, MAX(s.polled_at) AS last_diff
+            FROM snapshots s
+            JOIN latest_owner lo ON lo.netuid = s.netuid
+            WHERE s.owner_coldkey IS NOT NULL
+              AND lo.cur_owner IS NOT NULL
+              AND s.owner_coldkey <> lo.cur_owner
+            GROUP BY s.netuid
+        )
+        SELECT s.netuid, MIN(s.polled_at) AS epoch_start
+        FROM snapshots s
+        LEFT JOIN boundary b ON b.netuid = s.netuid
+        WHERE b.last_diff IS NULL OR s.polled_at > b.last_diff
+        GROUP BY s.netuid
+    """)
+    rows = await cursor.fetchall()
+    return {
+        row["netuid"]: datetime.fromisoformat(row["epoch_start"])
+        for row in rows
+        if row["epoch_start"]
+    }
+
+
 async def get_subnet_detail(db: aiosqlite.Connection,
-                             netuid: int) -> Optional[aiosqlite.Row]:
+                            netuid: int) -> Optional[aiosqlite.Row]:
     """Latest snapshot for one netuid LEFT JOINed with subnet_registry."""
     cursor = await db.execute("""
         SELECT s.*, r.name, r.github_url, r.x_handle, r.website,

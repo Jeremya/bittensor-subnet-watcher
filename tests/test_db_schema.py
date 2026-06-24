@@ -93,3 +93,44 @@ async def test_explicit_signal_fields_persist_on_snapshot_insert(tmp_path):
         69.25,
     )
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_emergence_columns_present(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    db = await init_db(db_path)
+    cursor = await db.execute("PRAGMA table_info(snapshots)")
+    cols = {row[1] for row in await cursor.fetchall()}
+    assert {
+        "reg_demand_score",
+        "slot_fill_score",
+        "flow_accel_score",
+        "emergence_score",
+        "emergence_stage",
+    } <= cols
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_owner_epoch_age_resets_on_owner_change(tmp_path):
+    from db.database import get_emergence_age_context
+
+    db_path = str(tmp_path / "test.db")
+    db = await init_db(db_path)
+    rows = [
+        (7, "2026-01-01T00:00:00+00:00", "ownerA"),
+        (7, "2026-01-02T00:00:00+00:00", "ownerA"),
+        (7, "2026-02-01T00:00:00+00:00", "ownerB"),
+        (7, "2026-02-02T00:00:00+00:00", "ownerB"),
+    ]
+    for netuid, ts, owner in rows:
+        await db.execute(
+            "INSERT INTO snapshots (netuid, polled_at, owner_coldkey) VALUES (?,?,?)",
+            (netuid, ts, owner),
+        )
+    await db.commit()
+
+    ctx = await get_emergence_age_context(db)
+
+    assert ctx[7].isoformat().startswith("2026-02-01")
+    await db.close()
