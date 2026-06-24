@@ -16,6 +16,7 @@ POLL_INTERVAL_MINUTES: int = int(os.getenv("POLL_INTERVAL_MINUTES", "15"))
 MOMENTUM_HISTORY_DAYS: int = 7
 MOMENTUM_HISTORY_LIMIT: int = int(MOMENTUM_HISTORY_DAYS * 24 * 60 / POLL_INTERVAL_MINUTES * 1.1)
 DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8000"))
+DASHBOARD_HOST: str = os.getenv("DASHBOARD_HOST", "127.0.0.1")
 DB_PATH: str = os.getenv("DB_PATH", "./data/monitor.db")
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 

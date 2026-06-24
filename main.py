@@ -320,13 +320,13 @@ async def main() -> None:
     asyncio.create_task(registry_refresh_and_prune())
     asyncio.create_task(poll_cycle())
 
-    logger.info("[STARTUP] db=ok telegram=ok scheduler=ok dashboard=http://localhost:%d",
-                config.DASHBOARD_PORT)
+    logger.info("[STARTUP] db=ok telegram=ok scheduler=ok dashboard=http://%s:%d",
+                config.DASHBOARD_HOST, config.DASHBOARD_PORT)
 
     # FastAPI
     app = create_app(_db)
     server_config = uvicorn.Config(
-        app, host="0.0.0.0", port=config.DASHBOARD_PORT, log_level="warning"
+        app, host=config.DASHBOARD_HOST, port=config.DASHBOARD_PORT, log_level="warning"
     )
     server = uvicorn.Server(server_config)
     try:

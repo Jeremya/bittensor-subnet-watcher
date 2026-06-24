@@ -29,6 +29,14 @@ def test_scoring_weights_sum_to_one():
     assert abs(total - 1.0) < 1e-9
 
 
+def test_dashboard_host_defaults_to_localhost():
+    import importlib
+    import config
+
+    importlib.reload(config)
+    assert config.DASHBOARD_HOST == "127.0.0.1"
+
+
 def test_config_has_no_duplicate_module_level_definitions():
     import ast
     import pathlib
