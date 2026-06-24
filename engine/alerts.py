@@ -290,6 +290,26 @@ def check_ownership_transfer(current: SubnetSnapshot,
     )
 
 
+def check_emergence_watch(snap: SubnetSnapshot) -> Optional[AlertRecord]:
+    """Watch-only alert for emerging subnets; never feeds buy recommendations."""
+    if snap.emergence_score is None or snap.emergence_stage == "established":
+        return None
+    if snap.emergence_score < config.EMERGENCE_WATCH_SCORE:
+        return None
+    return AlertRecord(
+        fired_at=datetime.now(timezone.utc),
+        netuid=snap.netuid,
+        subnet_name=f"SN{snap.netuid}",
+        alert_type="emergence_watch",
+        description=(
+            f"Emerging ({snap.emergence_stage}): emergence score "
+            f"{snap.emergence_score:.0f} - watch only, not yet tradable"
+        ),
+        current_value=round(snap.emergence_score, 2),
+        threshold=config.EMERGENCE_WATCH_SCORE,
+    )
+
+
 async def evaluate_alerts(
     db: aiosqlite.Connection,
     snapshots: list[SubnetSnapshot],
@@ -306,6 +326,7 @@ async def evaluate_alerts(
       github_spike, ownership_transfer, social_silence, new_entry
     Capital-protection alerts: tao_outflow, whale_inflow, emission_near_zero,
       liquidity_floor, hyperparameter_change
+    Watch-only alerts: emergence_watch
     """
     # Build mcap rank (sort by alpha_mcap_tao descending)
     valid_mcap = [(s.netuid, s.alpha_mcap_tao)
@@ -365,14 +386,22 @@ async def evaluate_alerts(
         if prev:
             candidates.append(check_hyperparameter_change(snap, prev))
 
+        # 13. Emerging candidate crossing watch threshold
+        candidates.append(check_emergence_watch(snap))
+
         # Dedup and persist
         for alert in candidates:
             if alert is None:
                 continue
             # Set subnet name from registry
             alert.subnet_name = _registry_name(registry, snap.netuid)
+            cooldown_hours = (
+                config.EMERGENCE_WATCH_COOLDOWN_HOURS
+                if alert.alert_type == "emergence_watch"
+                else config.ALERT_COOLDOWN_HOURS
+            )
             in_cooldown = await is_alert_in_cooldown(
-                db, snap.netuid, alert.alert_type, config.ALERT_COOLDOWN_HOURS
+                db, snap.netuid, alert.alert_type, cooldown_hours
             )
             if not in_cooldown:
                 await insert_alert(db, alert)
