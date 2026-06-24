@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from models import SubnetSnapshot
-from engine.emergence import compute_reg_demand_score
+from engine.emergence import compute_reg_demand_score, compute_slot_fill_score
 
 
 def _row(dt, reg_cost):
@@ -28,4 +28,32 @@ def test_reg_demand_flat_burn_is_neutral():
 def test_reg_demand_no_history_returns_none():
     now = datetime(2026, 6, 1, tzinfo=timezone.utc)
     comp = compute_reg_demand_score(_row(now, 1.0), [], window_hours=72)
+    assert comp.score is None
+
+
+def _slot_row(dt, n, cap=256):
+    return SubnetSnapshot(netuid=42, polled_at=dt, n_neurons=n, max_allowed_uids=cap)
+
+
+def test_slot_fill_rapid_climb_scores_high():
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    hist = [_slot_row(now - timedelta(hours=72 - i), 10 + i * 3) for i in range(0, 72, 6)]
+    snap = _slot_row(now, 240)
+    comp = compute_slot_fill_score(snap, hist, window_hours=72)
+    assert comp.score is not None and comp.score >= 65.0
+    assert comp.is_positive
+
+
+def test_slot_fill_full_and_static_is_mid():
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    hist = [_slot_row(now - timedelta(hours=72 - i), 256) for i in range(0, 72, 6)]
+    snap = _slot_row(now, 256)
+    comp = compute_slot_fill_score(snap, hist, window_hours=72)
+    assert comp.score is not None and comp.score <= 75.0
+
+
+def test_slot_fill_missing_cap_returns_none():
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    snap = SubnetSnapshot(netuid=42, polled_at=now, n_neurons=10, max_allowed_uids=None)
+    comp = compute_slot_fill_score(snap, [], window_hours=72)
     assert comp.score is None
