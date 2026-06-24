@@ -196,3 +196,24 @@ def compute_emergence_signal(
         stage=stage,
         reasons=reg.reasons + slot.reasons + flow.reasons,
     )
+
+
+def score_emergence(
+    snapshots: list[SubnetSnapshot],
+    history_by_netuid: dict[int, list[SubnetSnapshot]],
+    age_context: dict[int, datetime],
+    now: Optional[datetime] = None,
+) -> None:
+    """Compute emergence fields on each snapshot in-place."""
+    for snap in snapshots:
+        sig = compute_emergence_signal(
+            snap,
+            history=history_by_netuid.get(snap.netuid, []),
+            first_seen_at=age_context.get(snap.netuid),
+            now=now,
+        )
+        snap.reg_demand_score = sig.reg_demand.score
+        snap.slot_fill_score = sig.slot_fill.score
+        snap.flow_accel_score = sig.flow_accel.score
+        snap.emergence_score = sig.emergence_score
+        snap.emergence_stage = sig.stage

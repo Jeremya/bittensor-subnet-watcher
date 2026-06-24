@@ -2,7 +2,9 @@ import pytest
 import sys
 import importlib
 from datetime import datetime, timezone
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import ANY, patch, AsyncMock, MagicMock
+
+from models import SubnetSnapshot
 
 
 def test_validate_config_called_at_startup(monkeypatch):
@@ -84,3 +86,55 @@ async def test_poll_cycle_calls_evaluate_convergence(monkeypatch):
         await main.poll_cycle()
 
     convergence_mock.assert_awaited_once_with(main._db, {})
+
+
+@pytest.mark.asyncio
+async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
+    main = load_main_with_env(monkeypatch)
+    main._db = AsyncMock()
+    main._telegram = None
+    main._cycle_count = 0
+    main.config.WALLET_COLDKEYS = []
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    snap = SubnetSnapshot(
+        netuid=42,
+        polled_at=now,
+        reg_cost_tao=8.0,
+        n_neurons=240,
+        max_allowed_uids=256,
+        alpha_mcap_tao=1000.0,
+        net_tao_flow_tao=6.0,
+    )
+    hist_row = {
+        "netuid": 42,
+        "polled_at": now.isoformat(),
+        "alpha_mcap_tao": 1000.0,
+        "emission_rank": 10,
+        "net_tao_flow_tao": 1.0,
+        "reg_cost_tao": 2.0,
+        "n_neurons": 100,
+        "max_allowed_uids": 256,
+    }
+
+    with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
+            patch.object(main, "get_registry", AsyncMock(return_value={})), \
+            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
+            patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
+            patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[hist_row])), \
+            patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
+            patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
+            patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
+            patch.object(main, "get_emergence_age_context", AsyncMock(return_value={42: now})), \
+            patch.object(main, "score_snapshots", MagicMock()), \
+            patch.object(main, "score_emergence", MagicMock()) as score_emergence_mock, \
+            patch.object(main, "insert_snapshot", AsyncMock()), \
+            patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
+            patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
+        await main.poll_cycle()
+
+    score_emergence_mock.assert_called_once_with([snap], ANY, {42: now}, now=ANY)
+    history = score_emergence_mock.call_args.args[1][42][0]
+    assert history.reg_cost_tao == 2.0
+    assert history.n_neurons == 100
+    assert history.max_allowed_uids == 256

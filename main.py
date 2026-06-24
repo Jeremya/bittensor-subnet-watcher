@@ -22,7 +22,7 @@ from db.database import init_db, insert_snapshot, get_latest_snapshots, \
     get_snapshots_for_netuid, \
     upsert_portfolio_position, delete_gone_positions, update_registry_category, \
     get_recent_alert_types_per_netuid, get_active_analyst_coverage_netuids, \
-    get_recent_milestone_netuids
+    get_recent_milestone_netuids, get_emergence_age_context
 from collectors.analyst import AnalystCollector
 from collectors.chain import ChainCollector, init_subtensor, close_subtensor
 from collectors.github import GitHubCollector
@@ -31,6 +31,7 @@ from collectors.x_scraper import XCollector, close_browser
 from collectors.registry import RegistryCollector
 from collectors.portfolio import PortfolioCollector
 from engine.scorer import score_snapshots
+from engine.emergence import score_emergence
 from engine.alerts import (
     evaluate_alerts,
     evaluate_convergence,
@@ -146,6 +147,9 @@ async def poll_cycle() -> None:
                 alpha_mcap_tao=r["alpha_mcap_tao"],
                 emission_rank=r["emission_rank"],
                 net_tao_flow_tao=r["net_tao_flow_tao"],
+                reg_cost_tao=r["reg_cost_tao"],
+                n_neurons=r["n_neurons"],
+                max_allowed_uids=r["max_allowed_uids"],
             )
             for r in rows
         ]
@@ -171,6 +175,8 @@ async def poll_cycle() -> None:
         coverage_netuids=coverage_netuids_for_scoring,
         milestone_netuids=milestone_netuids_for_scoring,
     )
+    emergence_age_ctx = await get_emergence_age_context(_db)
+    score_emergence(chain_snapshots, history_by_netuid, emergence_age_ctx, now=start)
 
     # 4. Persist snapshots
     for snap in chain_snapshots:

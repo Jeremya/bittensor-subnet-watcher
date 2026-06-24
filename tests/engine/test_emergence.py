@@ -8,6 +8,7 @@ from engine.emergence import (
     compute_flow_accel_score,
     compute_reg_demand_score,
     compute_slot_fill_score,
+    score_emergence,
 )
 
 
@@ -166,3 +167,35 @@ def test_compute_emergence_established_subnet_scored_but_flagged():
     )
     sig = compute_emergence_signal(snap, [], first_seen_at=now - timedelta(days=300), now=now)
     assert sig.stage == "established"
+
+
+def test_score_emergence_sets_columns_in_place():
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    snap = SubnetSnapshot(
+        netuid=42,
+        polled_at=now,
+        reg_cost_tao=8.0,
+        n_neurons=240,
+        max_allowed_uids=256,
+        net_tao_flow_tao=6.0,
+        alpha_mcap_tao=1000.0,
+        alpha_mcap_usd=150_000.0,
+    )
+    hist = [
+        SubnetSnapshot(
+            netuid=42,
+            polled_at=now - timedelta(hours=72 - i),
+            reg_cost_tao=0.5 + i * 0.1,
+            n_neurons=10 + i * 3,
+            max_allowed_uids=256,
+            net_tao_flow_tao=(0.1 if i < 36 else 5.0),
+            alpha_mcap_tao=1000.0,
+        )
+        for i in range(0, 72, 6)
+    ]
+
+    score_emergence([snap], {42: hist}, {42: now - timedelta(days=10)}, now=now)
+
+    assert snap.emergence_score is not None
+    assert snap.emergence_stage in ("nascent", "accelerating")
+    assert snap.reg_demand_score is not None
