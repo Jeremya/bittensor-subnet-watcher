@@ -1,6 +1,9 @@
 # db/database.py
 import aiosqlite
+import glob
 import logging
+import os
+import sqlite3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
@@ -141,9 +144,36 @@ def _str_to_dt(s: Optional[str]) -> Optional[datetime]:
     return datetime.fromisoformat(s)
 
 
+def backup_db_file(db_path: str, keep: int = 5) -> str | None:
+    """Copy an existing non-empty DB to a timestamped .bak before migrations run."""
+    if not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
+        return None
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    backup_path = f"{db_path}.{stamp}.bak"
+    src = sqlite3.connect(db_path)
+    try:
+        dst = sqlite3.connect(backup_path)
+        try:
+            with dst:
+                src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+    backups = sorted(glob.glob(f"{db_path}.*.bak"))
+    for old in backups[:-keep]:
+        os.remove(old)
+    return backup_path
+
+
 async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
     """Create DB directory, initialize schema, return open connection."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_db_file(db_path)
+    if backup_path:
+        logger.info("[DB] pre-migration backup -> %s", backup_path)
     conn = await aiosqlite.connect(db_path)
     conn.row_factory = aiosqlite.Row
     await conn.executescript(SCHEMA_SQL)

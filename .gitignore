@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 *.db
 *.db-journal
+*.bak
 .DS_Store
 .pytest_cache/
 *.egg-info/
