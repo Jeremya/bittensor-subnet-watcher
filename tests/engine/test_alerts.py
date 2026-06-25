@@ -14,6 +14,7 @@ from engine.alerts import (
     check_ownership_transfer,
     check_tao_outflow,
     check_whale_inflow,
+    check_flow_impulse,
     check_emission_near_zero,
     check_liquidity_floor,
     check_hyperparameter_change,
@@ -183,6 +184,48 @@ def test_whale_inflow_does_not_fire_on_outflow():
     assert check_whale_inflow(snap) is None
 
 
+def test_check_flow_impulse_builds_important_buy_alert():
+    prev = make_snap(1, alpha_price_tao=1.0)
+    curr = make_snap(
+        1,
+        net_tao_flow_tao=60.0,
+        alpha_mcap_tao=1000.0,
+        alpha_mcap_usd=100_000.0,
+        alpha_price_tao=1.02,
+        buy_slippage_pct=3.4,
+    )
+
+    result = check_flow_impulse(curr, prev)
+
+    assert result is not None
+    assert result.alert_type == "important_buy"
+    assert result.current_value == pytest.approx(0.06)
+    assert result.threshold == pytest.approx(0.05)
+    assert "Important buy pressure" in result.description
+    assert "not wallet-attributed" in result.description
+
+
+def test_check_flow_impulse_builds_important_sell_alert():
+    prev = make_snap(1, alpha_price_tao=1.0)
+    curr = make_snap(
+        1,
+        net_tao_flow_tao=-40.0,
+        alpha_mcap_tao=1000.0,
+        alpha_mcap_usd=100_000.0,
+        alpha_price_tao=0.985,
+        sell_slippage_pct=5.2,
+    )
+
+    result = check_flow_impulse(curr, prev)
+
+    assert result is not None
+    assert result.alert_type == "important_sell"
+    assert result.current_value == pytest.approx(0.04)
+    assert result.threshold == pytest.approx(0.03)
+    assert "Important sell pressure" in result.description
+    assert "Impact score" in result.description
+
+
 def test_emission_near_zero_fires():
     snap = make_snap(1, daily_emission_tao=3.0, alpha_mcap_usd=500_000.0)
     result = check_emission_near_zero(snap)
@@ -286,6 +329,71 @@ async def test_evaluate_alerts_respects_cooldown(db):
     # Should not fire again (cooldown)
     em_div_alerts = [a for a in alerts if a.alert_type == "emission_divergence" and a.netuid == 1]
     assert len(em_div_alerts) == 0
+
+
+async def test_evaluate_alerts_fires_important_buy_without_legacy_duplicate(db):
+    snap = make_snap(
+        1,
+        net_tao_flow_tao=60.0,
+        alpha_mcap_tao=1000.0,
+        alpha_mcap_usd=100_000.0,
+        alpha_price_tao=1.02,
+        buy_slippage_pct=3.4,
+    )
+    prev = make_snap(1, alpha_price_tao=1.0)
+    registry = {1: {"name": "Apex", "x_handle": None, "github_url": None}}
+
+    alerts = await evaluate_alerts(db, [snap], registry, {1: prev}, known_netuids={1})
+
+    alert_types = {alert.alert_type for alert in alerts}
+    assert "important_buy" in alert_types
+    assert "whale_inflow" not in alert_types
+
+
+async def test_evaluate_alerts_fires_important_sell_without_legacy_duplicate(db):
+    snap = make_snap(
+        1,
+        net_tao_flow_tao=-40.0,
+        alpha_mcap_tao=1000.0,
+        alpha_mcap_usd=100_000.0,
+        alpha_price_tao=0.985,
+        sell_slippage_pct=5.2,
+    )
+    prev = make_snap(1, alpha_price_tao=1.0)
+    registry = {1: {"name": "Apex", "x_handle": None, "github_url": None}}
+
+    alerts = await evaluate_alerts(db, [snap], registry, {1: prev}, known_netuids={1})
+
+    alert_types = {alert.alert_type for alert in alerts}
+    assert "important_sell" in alert_types
+    assert "tao_outflow" not in alert_types
+
+
+async def test_evaluate_alerts_respects_flow_impulse_cooldown(db):
+    from db.database import insert_alert
+
+    existing = AlertRecord(
+        fired_at=now(),
+        netuid=1,
+        subnet_name="Apex",
+        alert_type="important_buy",
+        description="existing",
+        current_value=0.06,
+        threshold=0.05,
+    )
+    await insert_alert(db, existing)
+
+    snap = make_snap(
+        1,
+        net_tao_flow_tao=70.0,
+        alpha_mcap_tao=1000.0,
+        alpha_mcap_usd=100_000.0,
+    )
+    registry = {1: {"name": "Apex", "x_handle": None, "github_url": None}}
+
+    alerts = await evaluate_alerts(db, [snap], registry, {}, known_netuids={1})
+
+    assert all(alert.alert_type != "important_buy" for alert in alerts)
 
 
 async def test_evaluate_alerts_fires_ownership_transfer(db):

@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from models import SubnetSnapshot, AlertRecord
 from db.database import is_alert_in_cooldown, insert_alert
+from engine.flow_impulse import FlowImpulse, classify_flow_impulse
 import config
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,54 @@ def check_whale_inflow(snap: SubnetSnapshot) -> Optional[AlertRecord]:
     return None
 
 
+def _flow_impulse_description(impulse: FlowImpulse) -> str:
+    direction = impulse.direction
+    slippage = (
+        impulse.buy_slippage_pct
+        if direction == "buy"
+        else impulse.sell_slippage_pct
+    )
+    parts = [
+        (
+            f"Important {direction} pressure: {impulse.flow_tao:+.1f} TAO net flow "
+            f"in one poll, {impulse.relative_flow_pct * 100:.1f}% of pool "
+            f"(threshold {impulse.threshold_pct * 100:.1f}%)."
+        )
+    ]
+    context: list[str] = []
+    if impulse.price_move_pct is not None:
+        context.append(f"Price {impulse.price_move_pct:+.1f}% since prior poll")
+    if slippage is not None:
+        context.append(
+            f"{direction.title()} slippage {slippage:.1f}% on reference size"
+        )
+    if impulse.volume_turnover_pct is not None:
+        context.append(f"24h turnover {impulse.volume_turnover_pct:.2f}% of pool")
+    context.append(f"Impact score {impulse.impact_score:.0f}/100")
+    parts.append(". ".join(context) + ".")
+    parts.append("Source: emission-adjusted snapshot net flow, not wallet-attributed.")
+    return " ".join(parts)
+
+
+def check_flow_impulse(
+    current: SubnetSnapshot,
+    prev: SubnetSnapshot | None = None,
+) -> Optional[AlertRecord]:
+    """Important buy/sell pressure from emission-adjusted snapshot net flow."""
+    impulse = classify_flow_impulse(current, prev)
+    if impulse is None:
+        return None
+    return AlertRecord(
+        fired_at=datetime.now(timezone.utc),
+        netuid=current.netuid,
+        subnet_name=f"SN{current.netuid}",
+        alert_type=impulse.alert_type,
+        description=_flow_impulse_description(impulse),
+        current_value=impulse.relative_flow_pct,
+        threshold=impulse.threshold_pct,
+    )
+
+
 def check_emission_near_zero(snap: SubnetSnapshot) -> Optional[AlertRecord]:
     """Daily emission below EMISSION_NEAR_ZERO_TAO — subnet losing its emission share."""
     if snap.daily_emission_tao is None:
@@ -310,6 +359,14 @@ def check_emergence_watch(snap: SubnetSnapshot) -> Optional[AlertRecord]:
     )
 
 
+def _cooldown_hours_for_alert(alert_type: str) -> int:
+    if alert_type == "emergence_watch":
+        return config.EMERGENCE_WATCH_COOLDOWN_HOURS
+    if alert_type in {"important_buy", "important_sell"}:
+        return config.FLOW_IMPULSE_COOLDOWN_HOURS
+    return config.ALERT_COOLDOWN_HOURS
+
+
 async def evaluate_alerts(
     db: aiosqlite.Connection,
     snapshots: list[SubnetSnapshot],
@@ -324,8 +381,9 @@ async def evaluate_alerts(
 
     Project-monitoring alerts: emission_divergence, dead_github, emission_drop,
       github_spike, ownership_transfer, social_silence, new_entry
-    Capital-protection alerts: tao_outflow, whale_inflow, emission_near_zero,
-      liquidity_floor, hyperparameter_change
+    Capital-protection alerts: important_buy, important_sell,
+      emission_near_zero, liquidity_floor, hyperparameter_change
+    Legacy helpers kept for compatibility: tao_outflow, whale_inflow
     Watch-only alerts: emergence_watch
     """
     # Build mcap rank (sort by alpha_mcap_tao descending)
@@ -370,11 +428,8 @@ async def evaluate_alerts(
         candidates.append(check_new_entry(snap, known_netuids))
 
         # ── Capital-protection ────────────────────────────────────────────────
-        # 8. Net TAO outflow (capital flight this poll)
-        candidates.append(check_tao_outflow(snap))
-
-        # 9. Whale TAO inflow (large capital entry this poll)
-        candidates.append(check_whale_inflow(snap))
+        # 8. Important buy/sell pressure from emission-adjusted net flow.
+        candidates.append(check_flow_impulse(snap, prev))
 
         # 10. Emission approaching zero
         candidates.append(check_emission_near_zero(snap))
@@ -395,11 +450,7 @@ async def evaluate_alerts(
                 continue
             # Set subnet name from registry
             alert.subnet_name = _registry_name(registry, snap.netuid)
-            cooldown_hours = (
-                config.EMERGENCE_WATCH_COOLDOWN_HOURS
-                if alert.alert_type == "emergence_watch"
-                else config.ALERT_COOLDOWN_HOURS
-            )
+            cooldown_hours = _cooldown_hours_for_alert(alert.alert_type)
             in_cooldown = await is_alert_in_cooldown(
                 db, snap.netuid, alert.alert_type, cooldown_hours
             )
