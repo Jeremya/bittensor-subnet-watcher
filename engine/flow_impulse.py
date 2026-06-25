@@ -136,7 +136,7 @@ def classify_flow_impulse(
         return None
     if abs(flow) < config.FLOW_IMPULSE_MIN_TAO:
         return None
-    alpha_mcap_usd = _valid_market_cap(current.alpha_mcap_usd)
+    alpha_mcap_usd = _finite_number(current.alpha_mcap_usd)
     if alpha_mcap_usd is not None and alpha_mcap_usd < config.FLOW_IMPULSE_MIN_MCAP_USD:
         return None
 

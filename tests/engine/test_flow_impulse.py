@@ -85,11 +85,36 @@ def test_below_minimum_usd_market_cap_is_suppressed_when_present():
     assert classify_flow_impulse(current) is None
 
 
+@pytest.mark.parametrize("alpha_mcap_usd", (0.0, -1.0))
+def test_finite_non_positive_usd_market_cap_is_suppressed(alpha_mcap_usd):
+    current = make_snap(
+        net_tao_flow_tao=60.0,
+        alpha_mcap_tao=1_000.0,
+        alpha_mcap_usd=alpha_mcap_usd,
+    )
+
+    assert classify_flow_impulse(current) is None
+
+
 def test_missing_usd_market_cap_does_not_suppress_tao_denominated_alert():
     current = make_snap(
         net_tao_flow_tao=60.0,
         alpha_mcap_tao=1_000.0,
         alpha_mcap_usd=None,
+    )
+
+    impulse = classify_flow_impulse(current)
+
+    assert impulse is not None
+    assert impulse.alert_type == "important_buy"
+
+
+@pytest.mark.parametrize("alpha_mcap_usd", (nan, inf, -inf))
+def test_non_finite_usd_market_cap_does_not_suppress_tao_denominated_alert(alpha_mcap_usd):
+    current = make_snap(
+        net_tao_flow_tao=60.0,
+        alpha_mcap_tao=1_000.0,
+        alpha_mcap_usd=alpha_mcap_usd,
     )
 
     impulse = classify_flow_impulse(current)
