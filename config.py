@@ -47,6 +47,11 @@ EMISSION_NEAR_ZERO_MIN_MCAP_USD: float = 100_000.0  # only alert above this mcap
 LIQUIDITY_FLOOR_RATIO: float = 0.001        # < 0.1% daily turnover = effectively illiquid
 LIQUIDITY_MIN_MCAP_USD: float = 200_000.0   # only alert above this mcap
 REG_COST_CHANGE_PCT: float = 0.50           # reg cost moves ±50% = hyperparameter shift
+FLOW_IMPULSE_MIN_TAO: float = 25.0          # minimum absolute net TAO flow in one poll
+FLOW_IMPULSE_BUY_PCT: float = 0.05          # net inflow >= 5% of pool in one poll
+FLOW_IMPULSE_SELL_PCT: float = 0.03         # net outflow >= 3% of pool in one poll
+FLOW_IMPULSE_MIN_MCAP_USD: float = 50_000.0 # suppress tiny USD market caps when known
+FLOW_IMPULSE_COOLDOWN_HOURS: int = 2        # direction-specific flow impulse cooldown
 # Shared
 ALERT_COOLDOWN_HOURS: int = 6               # max 1 alert per subnet per type per 6h
 HEALTH_CHECK_NONE_THRESHOLD: float = 0.50   # warn if >50% subnets have None emission
