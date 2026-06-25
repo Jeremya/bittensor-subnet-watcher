@@ -41,26 +41,52 @@ def _finite_number(value: float | None) -> float | None:
     return value
 
 
+def _valid_price_tao(value: float | None) -> float | None:
+    number = _finite_number(value)
+    if number is None or number <= 0:
+        return None
+    return number
+
+
+def _valid_volume_alpha(value: float | None) -> float | None:
+    number = _finite_number(value)
+    if number is None or number < 0:
+        return None
+    return number
+
+
+def _valid_market_cap(value: float | None) -> float | None:
+    number = _finite_number(value)
+    if number is None or number <= 0:
+        return None
+    return number
+
+
+def _valid_slippage_pct(value: float | None) -> float | None:
+    number = _finite_number(value)
+    if number is None or number < 0:
+        return None
+    return number
+
+
 def _price_move_pct(
     current: SubnetSnapshot,
     previous: SubnetSnapshot | None,
 ) -> float | None:
     if previous is None:
         return None
-    current_price = _finite_number(current.alpha_price_tao)
-    previous_price = _finite_number(previous.alpha_price_tao)
+    current_price = _valid_price_tao(current.alpha_price_tao)
+    previous_price = _valid_price_tao(previous.alpha_price_tao)
     if current_price is None or previous_price is None:
-        return None
-    if previous_price <= 0:
         return None
     return _finite_number(((current_price - previous_price) / previous_price) * 100.0)
 
 
 def _volume_turnover_pct(snap: SubnetSnapshot) -> float | None:
-    volume = _finite_number(snap.volume_24h_alpha)
-    price = _finite_number(snap.alpha_price_tao)
-    pool = _finite_number(snap.alpha_mcap_tao)
-    if volume is None or price is None or pool is None or pool <= 0:
+    volume = _valid_volume_alpha(snap.volume_24h_alpha)
+    price = _valid_price_tao(snap.alpha_price_tao)
+    pool = _valid_market_cap(snap.alpha_mcap_tao)
+    if volume is None or price is None or pool is None:
         return None
     return _finite_number((volume * price / pool) * 100.0)
 
@@ -110,7 +136,7 @@ def classify_flow_impulse(
         return None
     if abs(flow) < config.FLOW_IMPULSE_MIN_TAO:
         return None
-    alpha_mcap_usd = _finite_number(current.alpha_mcap_usd)
+    alpha_mcap_usd = _valid_market_cap(current.alpha_mcap_usd)
     if alpha_mcap_usd is not None and alpha_mcap_usd < config.FLOW_IMPULSE_MIN_MCAP_USD:
         return None
 
@@ -156,8 +182,8 @@ def classify_flow_impulse(
         impact_score=score,
         price_move_pct=round(price_move, 4) if price_move is not None else None,
         volume_turnover_pct=round(turnover, 4) if turnover is not None else None,
-        buy_slippage_pct=_finite_number(current.buy_slippage_pct),
-        sell_slippage_pct=_finite_number(current.sell_slippage_pct),
+        buy_slippage_pct=_valid_slippage_pct(current.buy_slippage_pct),
+        sell_slippage_pct=_valid_slippage_pct(current.sell_slippage_pct),
         reasons=tuple(reasons),
         risks=tuple(risks),
     )

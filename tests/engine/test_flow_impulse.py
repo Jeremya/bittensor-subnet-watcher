@@ -172,3 +172,73 @@ def test_flat_price_move_is_non_confirming_without_against_risk():
     assert impulse.price_move_pct == pytest.approx(0.0)
     assert "price confirmed impulse direction" not in impulse.reasons
     assert "price moved against impulse" not in impulse.risks
+
+
+@pytest.mark.parametrize("price", (-1.0, 0.0))
+def test_non_positive_current_price_omits_price_context_without_suppressing_alert(price):
+    previous = make_snap(alpha_price_tao=1.0)
+    current = make_snap(net_tao_flow_tao=60.0, alpha_price_tao=price)
+
+    impulse = classify_flow_impulse(current, previous)
+
+    assert impulse is not None
+    assert impulse.alert_type == "important_buy"
+    assert impulse.price_move_pct is None
+    assert "price confirmed impulse direction" not in impulse.reasons
+    assert "price moved against impulse" not in impulse.risks
+
+
+def test_negative_volume_omits_volume_turnover_without_suppressing_alert():
+    current = make_snap(
+        net_tao_flow_tao=60.0,
+        volume_24h_alpha=-100.0,
+        alpha_price_tao=0.5,
+        alpha_mcap_tao=1_000.0,
+    )
+
+    impulse = classify_flow_impulse(current)
+
+    assert impulse is not None
+    assert impulse.volume_turnover_pct is None
+
+
+def test_negative_slippage_values_are_omitted_without_suppressing_alert():
+    current = make_snap(
+        net_tao_flow_tao=60.0,
+        buy_slippage_pct=-0.1,
+        sell_slippage_pct=-2.0,
+    )
+
+    impulse = classify_flow_impulse(current)
+
+    assert impulse is not None
+    assert impulse.buy_slippage_pct is None
+    assert impulse.sell_slippage_pct is None
+
+
+def test_buy_impulse_fires_at_minimum_flow_and_relative_thresholds():
+    current = make_snap(
+        net_tao_flow_tao=config.FLOW_IMPULSE_MIN_TAO,
+        alpha_mcap_tao=config.FLOW_IMPULSE_MIN_TAO / config.FLOW_IMPULSE_BUY_PCT,
+    )
+
+    impulse = classify_flow_impulse(current)
+
+    assert impulse is not None
+    assert impulse.alert_type == "important_buy"
+    assert impulse.flow_tao == pytest.approx(config.FLOW_IMPULSE_MIN_TAO)
+    assert impulse.relative_flow_pct == pytest.approx(config.FLOW_IMPULSE_BUY_PCT)
+
+
+def test_sell_impulse_fires_at_minimum_flow_and_relative_thresholds():
+    current = make_snap(
+        net_tao_flow_tao=-config.FLOW_IMPULSE_MIN_TAO,
+        alpha_mcap_tao=config.FLOW_IMPULSE_MIN_TAO / config.FLOW_IMPULSE_SELL_PCT,
+    )
+
+    impulse = classify_flow_impulse(current)
+
+    assert impulse is not None
+    assert impulse.alert_type == "important_sell"
+    assert impulse.flow_tao == pytest.approx(-config.FLOW_IMPULSE_MIN_TAO)
+    assert impulse.relative_flow_pct == pytest.approx(config.FLOW_IMPULSE_SELL_PCT)
