@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from math import inf, nan
 
 import pytest
 
@@ -121,3 +122,53 @@ def test_volume_turnover_is_included_when_fields_exist():
 
     assert impulse is not None
     assert impulse.volume_turnover_pct == pytest.approx(5.0)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("net_tao_flow_tao", nan),
+        ("net_tao_flow_tao", inf),
+        ("alpha_mcap_tao", nan),
+        ("alpha_mcap_tao", inf),
+    ),
+)
+def test_non_finite_required_fields_suppress_classification(field, value):
+    current = make_snap(net_tao_flow_tao=60.0, alpha_mcap_tao=1_000.0)
+    setattr(current, field, value)
+
+    assert classify_flow_impulse(current) is None
+
+
+def test_non_finite_optional_context_is_omitted_without_suppressing_alert():
+    previous = make_snap(alpha_price_tao=1.0)
+    current = make_snap(
+        net_tao_flow_tao=60.0,
+        alpha_mcap_usd=-inf,
+        alpha_price_tao=inf,
+        volume_24h_alpha=nan,
+        buy_slippage_pct=inf,
+        sell_slippage_pct=nan,
+    )
+
+    impulse = classify_flow_impulse(current, previous)
+
+    assert impulse is not None
+    assert impulse.alert_type == "important_buy"
+    assert impulse.price_move_pct is None
+    assert impulse.volume_turnover_pct is None
+    assert impulse.buy_slippage_pct is None
+    assert impulse.sell_slippage_pct is None
+    assert impulse.risks == ()
+
+
+def test_flat_price_move_is_non_confirming_without_against_risk():
+    previous = make_snap(alpha_price_tao=1.0)
+    current = make_snap(net_tao_flow_tao=60.0, alpha_price_tao=1.0)
+
+    impulse = classify_flow_impulse(current, previous)
+
+    assert impulse is not None
+    assert impulse.price_move_pct == pytest.approx(0.0)
+    assert "price confirmed impulse direction" not in impulse.reasons
+    assert "price moved against impulse" not in impulse.risks

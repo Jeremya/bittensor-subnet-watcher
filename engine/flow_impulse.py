@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from math import isfinite
 from typing import Literal
 
 import config
@@ -32,28 +33,36 @@ def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
     return max(low, min(high, value))
 
 
+def _finite_number(value: float | None) -> float | None:
+    if value is None:
+        return None
+    if not isfinite(value):
+        return None
+    return value
+
+
 def _price_move_pct(
     current: SubnetSnapshot,
     previous: SubnetSnapshot | None,
 ) -> float | None:
     if previous is None:
         return None
-    if current.alpha_price_tao is None or previous.alpha_price_tao is None:
+    current_price = _finite_number(current.alpha_price_tao)
+    previous_price = _finite_number(previous.alpha_price_tao)
+    if current_price is None or previous_price is None:
         return None
-    if previous.alpha_price_tao <= 0:
+    if previous_price <= 0:
         return None
-    return ((current.alpha_price_tao - previous.alpha_price_tao) / previous.alpha_price_tao) * 100.0
+    return _finite_number(((current_price - previous_price) / previous_price) * 100.0)
 
 
 def _volume_turnover_pct(snap: SubnetSnapshot) -> float | None:
-    if (
-        snap.volume_24h_alpha is None
-        or snap.alpha_price_tao is None
-        or snap.alpha_mcap_tao is None
-        or snap.alpha_mcap_tao <= 0
-    ):
+    volume = _finite_number(snap.volume_24h_alpha)
+    price = _finite_number(snap.alpha_price_tao)
+    pool = _finite_number(snap.alpha_mcap_tao)
+    if volume is None or price is None or pool is None or pool <= 0:
         return None
-    return (snap.volume_24h_alpha * snap.alpha_price_tao / snap.alpha_mcap_tao) * 100.0
+    return _finite_number((volume * price / pool) * 100.0)
 
 
 def _price_confirms(direction: FlowDirection, price_move_pct: float | None) -> bool:
@@ -62,6 +71,14 @@ def _price_confirms(direction: FlowDirection, price_move_pct: float | None) -> b
     if direction == "buy":
         return price_move_pct > 0
     return price_move_pct < 0
+
+
+def _price_moves_against(direction: FlowDirection, price_move_pct: float | None) -> bool:
+    if price_move_pct is None:
+        return False
+    if direction == "buy":
+        return price_move_pct < 0
+    return price_move_pct > 0
 
 
 def _impact_score(
@@ -85,18 +102,16 @@ def classify_flow_impulse(
     current: SubnetSnapshot,
     previous: SubnetSnapshot | None = None,
 ) -> FlowImpulse | None:
-    flow = current.net_tao_flow_tao
-    pool = current.alpha_mcap_tao
+    flow = _finite_number(current.net_tao_flow_tao)
+    pool = _finite_number(current.alpha_mcap_tao)
     if flow is None or pool is None or pool <= 0:
         return None
     if flow == 0:
         return None
     if abs(flow) < config.FLOW_IMPULSE_MIN_TAO:
         return None
-    if (
-        current.alpha_mcap_usd is not None
-        and current.alpha_mcap_usd < config.FLOW_IMPULSE_MIN_MCAP_USD
-    ):
+    alpha_mcap_usd = _finite_number(current.alpha_mcap_usd)
+    if alpha_mcap_usd is not None and alpha_mcap_usd < config.FLOW_IMPULSE_MIN_MCAP_USD:
         return None
 
     direction: FlowDirection = "buy" if flow > 0 else "sell"
@@ -119,7 +134,7 @@ def classify_flow_impulse(
     risks: list[str] = []
     if price_confirmed:
         reasons.append("price confirmed impulse direction")
-    elif price_move is not None:
+    elif _price_moves_against(direction, price_move):
         risks.append("price moved against impulse")
 
     turnover = _volume_turnover_pct(current)
@@ -141,8 +156,8 @@ def classify_flow_impulse(
         impact_score=score,
         price_move_pct=round(price_move, 4) if price_move is not None else None,
         volume_turnover_pct=round(turnover, 4) if turnover is not None else None,
-        buy_slippage_pct=current.buy_slippage_pct,
-        sell_slippage_pct=current.sell_slippage_pct,
+        buy_slippage_pct=_finite_number(current.buy_slippage_pct),
+        sell_slippage_pct=_finite_number(current.sell_slippage_pct),
         reasons=tuple(reasons),
         risks=tuple(risks),
     )
