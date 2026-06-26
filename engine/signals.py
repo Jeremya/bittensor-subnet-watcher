@@ -6,11 +6,11 @@ import config
 from models import SubnetSnapshot
 
 SEVERE_RISK_ALERTS = {"emission_near_zero", "liquidity_floor"}
+FLOW_RISK_ALERTS = {"tao_outflow", "important_sell"}
 MODERATE_RISK_ALERTS = {
     "ownership_transfer",
     "hyperparameter_change",
-    "tao_outflow",
-    "important_sell",
+    *FLOW_RISK_ALERTS,
     "dead_github",
 }
 FLOW_CATALYST_ALERTS = {"whale_inflow", "important_buy"}
@@ -333,18 +333,28 @@ def compute_catalyst_score(
     )
 
 
+def count_moderate_risk_alerts(alert_types: set[str]) -> int:
+    non_flow_alerts = (MODERATE_RISK_ALERTS - FLOW_RISK_ALERTS) & alert_types
+    flow_count = 1 if FLOW_RISK_ALERTS & alert_types else 0
+    return len(non_flow_alerts) + flow_count
+
+
 def compute_risk_penalty(alert_types: set[str], flow_negative: bool) -> RiskSignal:
     severe = SEVERE_RISK_ALERTS & alert_types
-    moderate = MODERATE_RISK_ALERTS & alert_types
+    moderate_count = count_moderate_risk_alerts(alert_types)
     penalty = 0.0
     risks: list[str] = []
 
     if severe:
         penalty += 45.0
         risks.append("severe liquidity/emission risk")
-    if moderate:
-        penalty += min(30.0, 12.0 * len(moderate))
-        risks.append("multiple moderate risk alerts" if len(moderate) >= 2 else "moderate risk alert")
+    if moderate_count:
+        penalty += min(30.0, 12.0 * moderate_count)
+        risks.append(
+            "multiple moderate risk alerts"
+            if moderate_count >= 2
+            else "moderate risk alert"
+        )
     if flow_negative:
         penalty += 15.0
         risks.append("negative flow risk")
@@ -353,7 +363,7 @@ def compute_risk_penalty(alert_types: set[str], flow_negative: bool) -> RiskSign
         penalty=round(_clamp(penalty, 0.0, 70.0), 2),
         risks=risks,
         has_severe_risk=bool(severe),
-        moderate_count=len(moderate),
+        moderate_count=moderate_count,
     )
 
 

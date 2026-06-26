@@ -42,6 +42,18 @@ def test_one_signal_does_not_trigger():
     assert 3 not in result
 
 
+def test_flow_inflow_aliases_count_as_one_convergence_signal():
+    signals_by_netuid = {3: {"important_buy", "whale_inflow"}}
+    result = _count_convergence_signals(signals_by_netuid, min_signals=2)
+    assert 3 not in result
+
+
+def test_flow_inflow_alias_combines_with_distinct_convergence_signal():
+    signals_by_netuid = {3: {"important_buy", "milestone"}}
+    result = _count_convergence_signals(signals_by_netuid, min_signals=2)
+    assert 3 in result
+
+
 def test_three_signals_triggers():
     signals_by_netuid = {3: {"milestone", "analyst_mention", "whale_inflow"}}
     result = _count_convergence_signals(signals_by_netuid, min_signals=2)
@@ -159,3 +171,23 @@ async def test_evaluate_convergence_accepts_important_buy_as_flow_signal(db):
 
     assert len(fired) == 1
     assert fired[0].alert_type == "convergence"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_convergence_does_not_double_count_flow_aliases(db):
+    now = datetime.now(timezone.utc)
+    for alert_type in ("whale_inflow", "important_buy"):
+        await insert_alert(
+            db,
+            AlertRecord(
+                fired_at=now,
+                netuid=3,
+                subnet_name="Templar",
+                alert_type=alert_type,
+                description=alert_type,
+            ),
+        )
+
+    fired = await evaluate_convergence(db, {3: {"name": "Templar"}})
+
+    assert fired == []

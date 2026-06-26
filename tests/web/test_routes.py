@@ -3,6 +3,7 @@ import pytest
 import aiosqlite
 from httpx import AsyncClient, ASGITransport
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 from db.database import (
     SCHEMA_SQL,
     add_analyst_handle,
@@ -120,6 +121,24 @@ async def test_subnet_detail_returns_404_for_unknown(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/subnet/9999")
     assert resp.status_code == 404
+
+
+async def test_subnet_detail_recent_alert_query_includes_flow_aliases_and_legacy_types(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=5, polled_at=now, composite_score=72.0))
+    await upsert_registry_entry(db, 5, "Templar", None, None, None)
+    recent_alerts = AsyncMock(return_value={})
+
+    with patch("web.routes.get_recent_alert_types_per_netuid", new=recent_alerts):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/subnet/5")
+
+    assert resp.status_code == 200
+    alert_types = recent_alerts.await_args.args[1]
+    assert "important_buy" in alert_types
+    assert "important_sell" in alert_types
+    assert "whale_inflow" in alert_types
+    assert "github_spike" in alert_types
 
 
 async def test_analysts_page_lists_config_and_db_handles(app, db):

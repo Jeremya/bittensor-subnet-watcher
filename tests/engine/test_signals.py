@@ -205,3 +205,11 @@ def test_important_sell_counts_as_moderate_risk():
     assert penalty.penalty == 12.0
     assert penalty.moderate_count == 1
     assert "moderate risk alert" in penalty.risks
+
+
+def test_outflow_aliases_count_as_one_moderate_risk():
+    penalty = compute_risk_penalty({"tao_outflow", "important_sell"}, flow_negative=False)
+
+    assert penalty.penalty == 12.0
+    assert penalty.moderate_count == 1
+    assert "moderate risk alert" in penalty.risks

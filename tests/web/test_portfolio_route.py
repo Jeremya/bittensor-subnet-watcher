@@ -142,3 +142,32 @@ def test_portfolio_renders_new_buy_candidate(client_with_portfolio):
     resp = client_with_portfolio.get("/portfolio")
     assert "Macro" in resp.text
     assert "New Buy" in resp.text or "NEW BUY" in resp.text
+
+
+def test_portfolio_recent_alert_query_includes_flow_aliases_and_legacy_types():
+    db = AsyncMock()
+    recent_alerts = AsyncMock(return_value={})
+    with patch("web.routes.get_portfolio_positions", new=AsyncMock(return_value=[])), \
+         patch("web.routes.get_latest_snapshots_with_registry", new=AsyncMock(return_value=[])), \
+         patch("web.routes.get_recent_alert_types_per_netuid", new=recent_alerts), \
+         patch("web.routes.get_active_analyst_coverage_netuids", new=AsyncMock(return_value=set())), \
+         patch("web.routes.get_recent_milestone_netuids", new=AsyncMock(return_value=set())), \
+         patch("web.routes.get_staked_netuids", new=AsyncMock(return_value=set())), \
+         patch("web.routes.get_last_50_alerts", new=AsyncMock(return_value=[])), \
+         patch("web.routes.get_emission_rank_24h_ago", new=AsyncMock(return_value={})), \
+         patch("web.routes.config") as mock_config:
+        mock_config.WALLET_COLDKEYS = []
+        mock_config.WALLET_LABELS = []
+        mock_config.MOMENTUM_HISTORY_LIMIT = 10
+        mock_config.ANALYST_COVERAGE_DECAY_HOURS = 72
+        mock_config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS = 168
+        app = create_app(db)
+        client = TestClient(app)
+        resp = client.get("/portfolio")
+
+    assert resp.status_code == 200
+    alert_types = recent_alerts.await_args.args[1]
+    assert "important_buy" in alert_types
+    assert "important_sell" in alert_types
+    assert "whale_inflow" in alert_types
+    assert "github_spike" in alert_types

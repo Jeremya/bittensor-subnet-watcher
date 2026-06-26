@@ -5,6 +5,7 @@ from typing import Optional
 from models import SubnetSnapshot, AlertRecord
 from db.database import is_alert_in_cooldown, insert_alert
 from engine.flow_impulse import FlowImpulse, classify_flow_impulse
+from engine.signals import FLOW_CATALYST_ALERTS
 import config
 
 logger = logging.getLogger(__name__)
@@ -473,12 +474,19 @@ _CONVERGENCE_SIGNAL_TYPES = [
 ]
 
 
+def _normalize_convergence_signal_types(signal_types: set[str]) -> set[str]:
+    return {
+        "flow_inflow" if signal_type in FLOW_CATALYST_ALERTS else signal_type
+        for signal_type in signal_types
+    }
+
+
 def _count_convergence_signals(signals_by_netuid: dict[int, set[str]],
                                min_signals: int) -> dict[int, set[str]]:
     return {
         netuid: signal_types
         for netuid, signal_types in signals_by_netuid.items()
-        if len(signal_types) >= min_signals
+        if len(_normalize_convergence_signal_types(signal_types)) >= min_signals
     }
 
 
@@ -613,6 +621,7 @@ async def evaluate_convergence(
             continue
 
         subnet_name = _registry_name(registry, netuid)
+        logical_signal_count = len(_normalize_convergence_signal_types(signal_types))
         type_lines = "\n".join(f"  • {signal_type}" for signal_type in sorted(signal_types))
         alert = AlertRecord(
             fired_at=datetime.now(timezone.utc),
@@ -621,11 +630,11 @@ async def evaluate_convergence(
             alert_type="convergence",
             description=(
                 f"HIGH CONVICTION — {subnet_name}\n"
-                f"{len(signal_types)} signals converged in "
+                f"{logical_signal_count} signals converged in "
                 f"{config.CONVERGENCE_SIGNAL_WINDOW_HOURS}h:\n"
                 f"{type_lines}"
             ),
-            current_value=float(len(signal_types)),
+            current_value=float(logical_signal_count),
             threshold=float(config.CONVERGENCE_MIN_SIGNALS),
         )
         await insert_alert(db, alert)

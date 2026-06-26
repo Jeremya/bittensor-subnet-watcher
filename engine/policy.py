@@ -3,11 +3,11 @@ from typing import Any, Optional
 import config
 from engine.signals import (
     FLOW_CATALYST_ALERTS,
-    MODERATE_RISK_ALERTS,
     RiskSignal,
     SEVERE_RISK_ALERTS,
     SignalComponent,
     SwingSignal,
+    count_moderate_risk_alerts,
 )
 
 
@@ -72,7 +72,7 @@ def build_signal_from_snapshot(
         or (snapshot.get("momentum_score") or 0.0) >= 70.0
     )
     severe_risk = bool((SEVERE_RISK_ALERTS & alert_types) or risk_penalty >= 45.0)
-    moderate_count = len(MODERATE_RISK_ALERTS & alert_types)
+    moderate_count = count_moderate_risk_alerts(alert_types)
 
     flow_reasons = []
     flow_risks = []
