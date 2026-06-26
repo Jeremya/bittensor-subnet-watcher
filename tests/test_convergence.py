@@ -138,3 +138,24 @@ async def test_evaluate_convergence_fires_for_distinct_recent_signals(db):
     assert fired[0].alert_type == "convergence"
     assert fired[0].current_value == 2.0
     assert "HIGH CONVICTION" in fired[0].description
+
+
+@pytest.mark.asyncio
+async def test_evaluate_convergence_accepts_important_buy_as_flow_signal(db):
+    now = datetime.now(timezone.utc)
+    for alert_type in ("milestone", "important_buy"):
+        await insert_alert(
+            db,
+            AlertRecord(
+                fired_at=now,
+                netuid=3,
+                subnet_name="Templar",
+                alert_type=alert_type,
+                description=alert_type,
+            ),
+        )
+
+    fired = await evaluate_convergence(db, {3: {"name": "Templar"}})
+
+    assert len(fired) == 1
+    assert fired[0].alert_type == "convergence"

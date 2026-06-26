@@ -189,3 +189,19 @@ def test_swing_signal_penalizes_outflow_and_liquidity_risk():
     assert signal.risk.has_severe_risk
     assert signal.tradability.blocks_new_buy
     assert "sustained net TAO outflow" in signal.flow.risks
+
+
+def test_important_buy_counts_as_large_inflow_catalyst():
+    score = compute_catalyst_score({"important_buy"}, covered=False, has_milestone=False)
+
+    assert score.score == 25.0
+    assert score.is_positive
+    assert "large net inflow catalyst" in score.reasons
+
+
+def test_important_sell_counts_as_moderate_risk():
+    penalty = compute_risk_penalty({"important_sell"}, flow_negative=False)
+
+    assert penalty.penalty == 12.0
+    assert penalty.moderate_count == 1
+    assert "moderate risk alert" in penalty.risks

@@ -468,6 +468,7 @@ _CONVERGENCE_SIGNAL_TYPES = [
     "milestone",
     "analyst_mention",
     "whale_inflow",
+    "important_buy",
     "github_spike",
 ]
 

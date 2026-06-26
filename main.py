@@ -157,8 +157,9 @@ async def poll_cycle() -> None:
         _db,
         [
             "convergence", "analyst_mention", "milestone", "whale_inflow",
-            "github_spike", "emission_near_zero", "liquidity_floor",
-            "ownership_transfer", "tao_outflow", "dead_github",
+            "important_buy", "github_spike", "emission_near_zero",
+            "liquidity_floor", "ownership_transfer", "tao_outflow",
+            "important_sell", "dead_github",
         ],
         config.ANALYST_COVERAGE_DECAY_HOURS,
     )

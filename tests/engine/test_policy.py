@@ -122,6 +122,46 @@ def test_build_signal_from_snapshot_uses_persisted_fields_and_context():
     assert signal.swing_score == pytest.approx(66.0)
 
 
+def test_build_signal_from_snapshot_treats_important_buy_as_catalyst():
+    signal = build_signal_from_snapshot(
+        {
+            "netuid": 7,
+            "flow_score": 55.0,
+            "relative_value_score": 60.0,
+            "tradability_score": 70.0,
+            "catalyst_score": 25.0,
+            "risk_penalty": 0.0,
+            "swing_score": 68.0,
+        },
+        {"important_buy"},
+        covered=False,
+        has_milestone=False,
+    )
+
+    assert signal.catalyst.is_positive
+    assert "large net inflow catalyst" in signal.catalyst.reasons
+
+
+def test_build_signal_from_snapshot_treats_important_sell_as_moderate_risk():
+    signal = build_signal_from_snapshot(
+        {
+            "netuid": 7,
+            "flow_score": 55.0,
+            "relative_value_score": 60.0,
+            "tradability_score": 70.0,
+            "catalyst_score": None,
+            "risk_penalty": 12.0,
+            "swing_score": 58.0,
+        },
+        {"important_sell"},
+        covered=False,
+        has_milestone=False,
+    )
+
+    assert signal.risk.moderate_count == 1
+    assert "moderate risk alert" in signal.risk.risks
+
+
 # ── action_for_position ─────────────────────────────────────────────────────
 
 def test_action_sell_on_thesis_break(monkeypatch):

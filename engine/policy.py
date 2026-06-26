@@ -1,7 +1,14 @@
 """Shared swing policy used by subnet detail and portfolio recommendations."""
 from typing import Any, Optional
 import config
-from engine.signals import RiskSignal, SignalComponent, SwingSignal
+from engine.signals import (
+    FLOW_CATALYST_ALERTS,
+    MODERATE_RISK_ALERTS,
+    RiskSignal,
+    SEVERE_RISK_ALERTS,
+    SignalComponent,
+    SwingSignal,
+)
 
 
 def _is_signal(value: Any) -> bool:
@@ -59,18 +66,13 @@ def build_signal_from_snapshot(
     catalyst_positive = (
         "convergence" in alert_types
         or "milestone" in alert_types
+        or bool(FLOW_CATALYST_ALERTS & alert_types)
         or covered
         or has_milestone
         or (snapshot.get("momentum_score") or 0.0) >= 70.0
     )
-    severe_risk = bool(
-        ({"emission_near_zero", "liquidity_floor"} & alert_types)
-        or risk_penalty >= 45.0
-    )
-    moderate_count = len(
-        {"ownership_transfer", "hyperparameter_change", "tao_outflow", "dead_github"}
-        & alert_types
-    )
+    severe_risk = bool((SEVERE_RISK_ALERTS & alert_types) or risk_penalty >= 45.0)
+    moderate_count = len(MODERATE_RISK_ALERTS & alert_types)
 
     flow_reasons = []
     flow_risks = []
@@ -82,6 +84,8 @@ def build_signal_from_snapshot(
     catalyst_reasons = []
     if "convergence" in alert_types:
         catalyst_reasons.append("fresh convergence catalyst")
+    if FLOW_CATALYST_ALERTS & alert_types:
+        catalyst_reasons.append("large net inflow catalyst")
     if "analyst_mention" in alert_types or covered:
         catalyst_reasons.append("fresh analyst coverage")
     if "milestone" in alert_types or has_milestone:

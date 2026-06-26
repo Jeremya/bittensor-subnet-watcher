@@ -10,14 +10,16 @@ MODERATE_RISK_ALERTS = {
     "ownership_transfer",
     "hyperparameter_change",
     "tao_outflow",
+    "important_sell",
     "dead_github",
 }
+FLOW_CATALYST_ALERTS = {"whale_inflow", "important_buy"}
 CATALYST_ALERTS = {
     "convergence",
     "analyst_mention",
     "milestone",
     "github_spike",
-    "whale_inflow",
+    *FLOW_CATALYST_ALERTS,
 }
 
 
@@ -306,7 +308,7 @@ def compute_catalyst_score(
     if "convergence" in alert_types:
         score += 50.0
         reasons.append("fresh convergence catalyst")
-    if "whale_inflow" in alert_types:
+    if FLOW_CATALYST_ALERTS & alert_types:
         score += 25.0
         reasons.append("large net inflow catalyst")
     if "analyst_mention" in alert_types or covered:
