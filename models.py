@@ -65,8 +65,11 @@ class AlertRecord:
     alert_type: str       # project-monitoring: 'emission_divergence' | 'dead_github' |
                           #   'emission_drop' | 'github_spike' | 'ownership_transfer' |
                           #   'social_silence' | 'new_entry'
-                          # capital-protection: 'tao_outflow' | 'whale_inflow' |
-                          #   'emission_near_zero' | 'liquidity_floor' | 'hyperparameter_change'
+                          # capital-protection: 'important_buy' | 'important_sell' |
+                          #   'tao_outflow' | 'whale_inflow' | 'emission_near_zero' |
+                          #   'liquidity_floor' | 'hyperparameter_change'
+                          # watch/catalyst: 'emergence_watch' | 'analyst_mention' |
+                          #   'milestone' | 'convergence'
     description: str
     current_value: Optional[float] = None
     threshold: Optional[float] = None

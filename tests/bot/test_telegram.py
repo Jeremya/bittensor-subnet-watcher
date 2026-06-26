@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime, timezone
 from models import AlertRecord
-from bot.telegram import TelegramBot, format_alert_message
+from bot.telegram import ALERT_TYPE_EMOJI, TelegramBot, format_alert_message
 
 
 def make_alert(alert_type: str = "emission_divergence") -> AlertRecord:
@@ -24,6 +24,28 @@ def test_format_alert_message():
     assert "Chutes" in msg
     assert "6.0" in msg
     assert "1.5" in msg
+
+
+def test_format_important_buy_alert_message():
+    alert = make_alert("important_buy")
+    alert.description = "Important buy pressure"
+
+    msg = format_alert_message(alert)
+
+    assert ALERT_TYPE_EMOJI["important_buy"] == "🟢"
+    assert "Important Buy" in msg
+    assert "Important buy pressure" in msg
+
+
+def test_format_important_sell_alert_message():
+    alert = make_alert("important_sell")
+    alert.description = "Important sell pressure"
+
+    msg = format_alert_message(alert)
+
+    assert ALERT_TYPE_EMOJI["important_sell"] == "🔴"
+    assert "Important Sell" in msg
+    assert "Important sell pressure" in msg
 
 
 async def test_send_alerts_happy_path():

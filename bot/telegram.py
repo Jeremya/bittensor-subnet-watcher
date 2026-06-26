@@ -10,6 +10,8 @@ ALERT_TYPE_EMOJI = {
     "emission_divergence": "🔔",
     "dead_github": "💀",
     "ownership_transfer": "🔄",
+    "important_buy": "🟢",
+    "important_sell": "🔴",
     "whale_inflow": "🐋",
     "emission_drop": "📉",
     "github_spike": "🚀",
