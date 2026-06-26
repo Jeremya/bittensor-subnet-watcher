@@ -1,5 +1,6 @@
 import pytest
 import aiosqlite
+import config
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, patch
 from models import SubnetSnapshot, AlertRecord
@@ -369,7 +370,7 @@ async def test_evaluate_alerts_fires_important_sell_without_legacy_duplicate(db)
     assert "tao_outflow" not in alert_types
 
 
-async def test_evaluate_alerts_respects_flow_impulse_cooldown(db):
+async def test_evaluate_alerts_suppresses_recent_flow_impulse_same_type(db):
     from db.database import insert_alert
 
     existing = AlertRecord(
@@ -394,6 +395,38 @@ async def test_evaluate_alerts_respects_flow_impulse_cooldown(db):
     alerts = await evaluate_alerts(db, [snap], registry, {}, known_netuids={1})
 
     assert all(alert.alert_type != "important_buy" for alert in alerts)
+
+
+async def test_evaluate_alerts_uses_flow_impulse_cooldown_instead_of_default(db):
+    from db.database import insert_alert
+
+    age_hours = config.FLOW_IMPULSE_COOLDOWN_HOURS + 0.5
+    assert age_hours < config.ALERT_COOLDOWN_HOURS
+    existing = AlertRecord(
+        fired_at=now() - timedelta(hours=age_hours),
+        netuid=1,
+        subnet_name="Apex",
+        alert_type="important_buy",
+        description="existing",
+        current_value=0.06,
+        threshold=0.05,
+    )
+    await insert_alert(db, existing)
+
+    snap = make_snap(
+        1,
+        net_tao_flow_tao=70.0,
+        alpha_mcap_tao=1000.0,
+        alpha_mcap_usd=100_000.0,
+    )
+    registry = {1: {"name": "Apex", "x_handle": None, "github_url": None}}
+
+    alerts = await evaluate_alerts(db, [snap], registry, {}, known_netuids={1})
+
+    important_buy_alerts = [
+        alert for alert in alerts if alert.alert_type == "important_buy"
+    ]
+    assert len(important_buy_alerts) == 1
 
 
 async def test_evaluate_alerts_fires_ownership_transfer(db):
