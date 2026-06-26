@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
 from engine.signals import (
+    CATALYST_ALERTS,
+    MODERATE_RISK_ALERTS,
+    SEVERE_RISK_ALERTS,
     SwingSignal,
     compute_catalyst_score,
     compute_flow_score,
@@ -213,3 +216,12 @@ def test_outflow_aliases_count_as_one_moderate_risk():
     assert penalty.penalty == 12.0
     assert penalty.moderate_count == 1
     assert "moderate risk alert" in penalty.risks
+
+
+def test_scoring_alert_types_derive_from_signal_sets():
+    from engine import signals
+
+    assert signals.SCORING_ALERT_TYPES == sorted(
+        CATALYST_ALERTS | SEVERE_RISK_ALERTS | MODERATE_RISK_ALERTS
+    )
+    assert "hyperparameter_change" in signals.SCORING_ALERT_TYPES

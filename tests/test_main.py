@@ -91,10 +91,13 @@ async def test_poll_cycle_calls_evaluate_convergence(monkeypatch):
 @pytest.mark.asyncio
 async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
     main = load_main_with_env(monkeypatch)
+    from engine import signals
+
     main._db = AsyncMock()
     main._telegram = None
     main._cycle_count = 0
     main.config.WALLET_COLDKEYS = []
+    recent_alert_types_mock = AsyncMock(return_value={})
     now = datetime(2026, 6, 1, tzinfo=timezone.utc)
     snap = SubnetSnapshot(
         netuid=42,
@@ -121,7 +124,7 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
             patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[hist_row])), \
-            patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
+            patch.object(main, "get_recent_alert_types_per_netuid", recent_alert_types_mock), \
             patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_emergence_age_context", AsyncMock(return_value={42: now})), \
@@ -138,3 +141,4 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
     assert history.reg_cost_tao == 2.0
     assert history.n_neurons == 100
     assert history.max_allowed_uids == 256
+    assert recent_alert_types_mock.await_args.args[1] == signals.SCORING_ALERT_TYPES

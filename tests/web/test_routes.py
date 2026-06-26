@@ -4,6 +4,7 @@ import aiosqlite
 from httpx import AsyncClient, ASGITransport
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
+from engine import signals
 from db.database import (
     SCHEMA_SQL,
     add_analyst_handle,
@@ -135,10 +136,16 @@ async def test_subnet_detail_recent_alert_query_includes_flow_aliases_and_legacy
 
     assert resp.status_code == 200
     alert_types = recent_alerts.await_args.args[1]
-    assert "important_buy" in alert_types
-    assert "important_sell" in alert_types
-    assert "whale_inflow" in alert_types
-    assert "github_spike" in alert_types
+    assert alert_types == signals.SCORING_ALERT_TYPES
+    for alert_type in (
+        "hyperparameter_change",
+        "tao_outflow",
+        "important_sell",
+        "whale_inflow",
+        "important_buy",
+        "github_spike",
+    ):
+        assert alert_type in alert_types
 
 
 async def test_analysts_page_lists_config_and_db_handles(app, db):

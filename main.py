@@ -31,6 +31,7 @@ from collectors.x_scraper import XCollector, close_browser
 from collectors.registry import RegistryCollector
 from collectors.portfolio import PortfolioCollector
 from engine.scorer import score_snapshots
+from engine.signals import SCORING_ALERT_TYPES
 from engine.emergence import score_emergence
 from engine.alerts import (
     evaluate_alerts,
@@ -155,12 +156,7 @@ async def poll_cycle() -> None:
         ]
     alert_types_for_scoring = await get_recent_alert_types_per_netuid(
         _db,
-        [
-            "convergence", "analyst_mention", "milestone", "whale_inflow",
-            "important_buy", "github_spike", "emission_near_zero",
-            "liquidity_floor", "ownership_transfer", "tao_outflow",
-            "important_sell", "dead_github",
-        ],
+        SCORING_ALERT_TYPES,
         config.ANALYST_COVERAGE_DECAY_HOURS,
     )
     coverage_netuids_for_scoring = await get_active_analyst_coverage_netuids(

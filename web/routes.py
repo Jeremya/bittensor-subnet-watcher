@@ -29,6 +29,7 @@ from engine.recommendations import (
     build_portfolio_recommendations,
 )
 from engine.policy import build_signal_from_snapshot, verdict_for_subnet
+from engine.signals import SCORING_ALERT_TYPES
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -135,21 +136,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         total = len(all_snaps)
         alert_types_by_netuid = await get_recent_alert_types_per_netuid(
             db,
-            [
-                "convergence",
-                "milestone",
-                "analyst_mention",
-                "important_buy",
-                "whale_inflow",
-                "github_spike",
-                "liquidity_floor",
-                "emission_near_zero",
-                "ownership_transfer",
-                "hyperparameter_change",
-                "tao_outflow",
-                "important_sell",
-                "dead_github",
-            ],
+            SCORING_ALERT_TYPES,
             config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS,
         )
         covered_netuids = await get_active_analyst_coverage_netuids(
@@ -388,21 +375,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         snapshots_by_netuid = {snap["netuid"]: snap for snap in latest_snaps}
         alert_types = await get_recent_alert_types_per_netuid(
             db,
-            [
-                "convergence",
-                "milestone",
-                "analyst_mention",
-                "important_buy",
-                "whale_inflow",
-                "github_spike",
-                "liquidity_floor",
-                "emission_near_zero",
-                "ownership_transfer",
-                "hyperparameter_change",
-                "tao_outflow",
-                "important_sell",
-                "dead_github",
-            ],
+            SCORING_ALERT_TYPES,
             config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS,
         )
         coverage_netuids = await get_active_analyst_coverage_netuids(

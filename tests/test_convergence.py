@@ -191,3 +191,33 @@ async def test_evaluate_convergence_does_not_double_count_flow_aliases(db):
     fired = await evaluate_convergence(db, {3: {"name": "Templar"}})
 
     assert fired == []
+
+
+@pytest.mark.asyncio
+async def test_evaluate_convergence_displays_normalized_flow_signal(db):
+    now = datetime.now(timezone.utc)
+    for alert_type in ("milestone", "whale_inflow", "important_buy"):
+        await insert_alert(
+            db,
+            AlertRecord(
+                fired_at=now,
+                netuid=3,
+                subnet_name="Templar",
+                alert_type=alert_type,
+                description=alert_type,
+            ),
+        )
+
+    fired = await evaluate_convergence(db, {3: {"name": "Templar"}})
+
+    assert len(fired) == 1
+    assert fired[0].current_value == 2.0
+    assert "2 signals converged" in fired[0].description
+    signal_lines = [
+        line for line in fired[0].description.splitlines()
+        if line.startswith("  • ")
+    ]
+    assert signal_lines == [
+        "  • flow_inflow (important_buy, whale_inflow)",
+        "  • milestone",
+    ]

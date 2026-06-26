@@ -481,6 +481,18 @@ def _normalize_convergence_signal_types(signal_types: set[str]) -> set[str]:
     }
 
 
+def _display_convergence_signal_types(signal_types: set[str]) -> list[str]:
+    display_types = [
+        signal_type
+        for signal_type in signal_types
+        if signal_type not in FLOW_CATALYST_ALERTS
+    ]
+    flow_aliases = sorted(FLOW_CATALYST_ALERTS & signal_types)
+    if flow_aliases:
+        display_types.append(f"flow_inflow ({', '.join(flow_aliases)})")
+    return sorted(display_types)
+
+
 def _count_convergence_signals(signals_by_netuid: dict[int, set[str]],
                                min_signals: int) -> dict[int, set[str]]:
     return {
@@ -622,7 +634,10 @@ async def evaluate_convergence(
 
         subnet_name = _registry_name(registry, netuid)
         logical_signal_count = len(_normalize_convergence_signal_types(signal_types))
-        type_lines = "\n".join(f"  • {signal_type}" for signal_type in sorted(signal_types))
+        display_signal_types = _display_convergence_signal_types(signal_types)
+        type_lines = "\n".join(
+            f"  • {signal_type}" for signal_type in display_signal_types
+        )
         alert = AlertRecord(
             fired_at=datetime.now(timezone.utc),
             netuid=netuid,

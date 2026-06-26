@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from engine import signals
 from web.routes import create_app
 
 
@@ -167,7 +168,13 @@ def test_portfolio_recent_alert_query_includes_flow_aliases_and_legacy_types():
 
     assert resp.status_code == 200
     alert_types = recent_alerts.await_args.args[1]
-    assert "important_buy" in alert_types
-    assert "important_sell" in alert_types
-    assert "whale_inflow" in alert_types
-    assert "github_spike" in alert_types
+    assert alert_types == signals.SCORING_ALERT_TYPES
+    for alert_type in (
+        "hyperparameter_change",
+        "tao_outflow",
+        "important_sell",
+        "whale_inflow",
+        "important_buy",
+        "github_spike",
+    ):
+        assert alert_type in alert_types
