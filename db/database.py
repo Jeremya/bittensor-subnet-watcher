@@ -55,7 +55,11 @@ CREATE TABLE IF NOT EXISTS snapshots (
     slot_fill_score    REAL,
     flow_accel_score   REAL,
     emergence_score    REAL,
-    emergence_stage    TEXT
+    emergence_stage    TEXT,
+    price_ema_score    REAL,
+    emission_value_score REAL,
+    protocol_context_score REAL,
+    spec421_score      REAL
 );
 
 CREATE TABLE IF NOT EXISTS alerts (
@@ -204,6 +208,10 @@ async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
         ("flow_accel_score", "REAL"),
         ("emergence_score", "REAL"),
         ("emergence_stage", "TEXT"),
+        ("price_ema_score", "REAL"),
+        ("emission_value_score", "REAL"),
+        ("protocol_context_score", "REAL"),
+        ("spec421_score", "REAL"),
     ]:
         if col not in existing_cols:
             await conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {definition}")
@@ -256,8 +264,10 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
             flow_score, relative_value_score, tradability_score, catalyst_score,
             risk_penalty, swing_score, composite_score,
             reg_demand_score, slot_fill_score, flow_accel_score,
-            emergence_score, emergence_stage
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            emergence_score, emergence_stage,
+            price_ema_score, emission_value_score, protocol_context_score,
+            spec421_score
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         snap.netuid, _dt_to_str(snap.polled_at),
         snap.alpha_price_tao, snap.alpha_mcap_tao, snap.alpha_mcap_usd,
@@ -274,6 +284,8 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
         snap.composite_score,
         snap.reg_demand_score, snap.slot_fill_score, snap.flow_accel_score,
         snap.emergence_score, snap.emergence_stage,
+        snap.price_ema_score, snap.emission_value_score, snap.protocol_context_score,
+        snap.spec421_score,
     ))
     await db.commit()
 
@@ -514,9 +526,13 @@ async def upsert_registry_entry(db: aiosqlite.Connection,
         VALUES (?,?,?,?,?,?)
         ON CONFLICT(netuid) DO UPDATE SET
             name=excluded.name,
-            github_url=excluded.github_url,
-            x_handle=excluded.x_handle,
-            website=excluded.website,
+            -- Don't clobber a known supplemental value with a NULL from on-chain.
+            -- Many subnets (e.g. SN40 Ralph) expose no github_repo in their on-chain
+            -- identity, so excluded.github_url is NULL each refresh — COALESCE keeps a
+            -- previously-set value (manual or taostat-sourced) instead of wiping it.
+            github_url=COALESCE(excluded.github_url, subnet_registry.github_url),
+            x_handle=COALESCE(excluded.x_handle, subnet_registry.x_handle),
+            website=COALESCE(excluded.website, subnet_registry.website),
             updated_at=excluded.updated_at
     """, (netuid, name, github_url, x_handle, website, now))
     await db.commit()

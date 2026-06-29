@@ -55,6 +55,10 @@ class SubnetSnapshot:
     flow_accel_score: Optional[float] = None
     emergence_score: Optional[float] = None
     emergence_stage: Optional[str] = None
+    price_ema_score: Optional[float] = None
+    emission_value_score: Optional[float] = None
+    protocol_context_score: Optional[float] = None
+    spec421_score: Optional[float] = None
 
 
 @dataclass

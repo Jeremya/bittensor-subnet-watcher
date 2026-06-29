@@ -30,6 +30,26 @@ async def test_insert_and_get_snapshot(db):
     assert rows[0]["composite_score"] == pytest.approx(75.0)
 
 
+async def test_insert_snapshot_persists_spec421_fields(db):
+    now = datetime.now(timezone.utc)
+    snap = SubnetSnapshot(
+        netuid=1,
+        polled_at=now,
+        price_ema_score=72.5,
+        emission_value_score=64.0,
+        protocol_context_score=58.5,
+        spec421_score=66.25,
+    )
+    await insert_snapshot(db, snap)
+
+    rows = await get_latest_snapshots(db)
+    assert len(rows) == 1
+    assert rows[0]["price_ema_score"] == pytest.approx(72.5)
+    assert rows[0]["emission_value_score"] == pytest.approx(64.0)
+    assert rows[0]["protocol_context_score"] == pytest.approx(58.5)
+    assert rows[0]["spec421_score"] == pytest.approx(66.25)
+
+
 async def test_get_latest_snapshots_returns_one_per_netuid(db):
     now = datetime.now(timezone.utc)
     for i in range(3):
