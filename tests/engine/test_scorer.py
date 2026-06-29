@@ -411,6 +411,37 @@ def test_score_snapshots_populates_spec421_fields_and_compatibility_scores():
     assert snap.composite_score == snap.swing_score
 
 
+def test_score_snapshots_continues_when_spec421_signal_missing(monkeypatch):
+    import engine.scorer as scorer
+
+    monkeypatch.setattr(scorer, "compute_spec421_signals", lambda snapshots, history: {})
+    snap = make_snap(
+        1,
+        daily_emission_tao=20.0,
+        alpha_mcap_usd=600_000,
+        tao_usd_price=300.0,
+        volume_24h_alpha=50_000.0,
+        alpha_price_tao=0.002,
+        alpha_mcap_tao=1_000.0,
+    )
+    hist_snap = SubnetSnapshot(
+        netuid=1,
+        polled_at=datetime.now(timezone.utc) - timedelta(hours=6),
+        net_tao_flow_tao=10.0,
+        alpha_mcap_tao=1_000.0,
+        emission_rank=9,
+    )
+
+    score_snapshots([snap], {1: [hist_snap]})
+
+    assert snap.hype_score is None
+    assert snap.flow_score is not None
+    assert snap.relative_value_score is not None
+    assert snap.tradability_score is not None
+    assert snap.swing_score is not None
+    assert snap.composite_score == snap.swing_score
+
+
 # ── Hype score ────────────────────────────────────────────────────────────────
 
 def test_hype_score_none_without_social_data():

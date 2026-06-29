@@ -145,6 +145,7 @@ async def poll_cycle() -> None:
             SubnetSnapshot(
                 netuid=r["netuid"],
                 polled_at=datetime.fromisoformat(r["polled_at"]),
+                alpha_price_tao=r.get("alpha_price_tao"),
                 alpha_mcap_tao=r["alpha_mcap_tao"],
                 emission_rank=r["emission_rank"],
                 net_tao_flow_tao=r["net_tao_flow_tao"],
@@ -165,6 +166,8 @@ async def poll_cycle() -> None:
     milestone_netuids_for_scoring = await get_recent_milestone_netuids(
         _db, config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS
     )
+    emergence_age_ctx = await get_emergence_age_context(_db)
+    score_emergence(chain_snapshots, history_by_netuid, emergence_age_ctx, now=start)
     score_snapshots(
         chain_snapshots,
         history_by_netuid,
@@ -172,8 +175,6 @@ async def poll_cycle() -> None:
         coverage_netuids=coverage_netuids_for_scoring,
         milestone_netuids=milestone_netuids_for_scoring,
     )
-    emergence_age_ctx = await get_emergence_age_context(_db)
-    score_emergence(chain_snapshots, history_by_netuid, emergence_age_ctx, now=start)
 
     # 4. Persist snapshots
     for snap in chain_snapshots:

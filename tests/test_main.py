@@ -145,6 +145,86 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_poll_cycle_passes_historical_alpha_price_to_scoring(monkeypatch):
+    main = load_main_with_env(monkeypatch)
+
+    main._db = AsyncMock()
+    main._telegram = None
+    main._cycle_count = 0
+    main.config.WALLET_COLDKEYS = []
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    snap = SubnetSnapshot(netuid=42, polled_at=now, alpha_price_tao=1.2)
+    hist_row = {
+        "netuid": 42,
+        "polled_at": now.isoformat(),
+        "alpha_price_tao": 1.0,
+        "alpha_mcap_tao": 1000.0,
+        "emission_rank": 10,
+        "net_tao_flow_tao": 1.0,
+        "reg_cost_tao": 2.0,
+        "n_neurons": 100,
+        "max_allowed_uids": 256,
+    }
+
+    with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
+            patch.object(main, "get_registry", AsyncMock(return_value={})), \
+            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
+            patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
+            patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[hist_row])), \
+            patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
+            patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
+            patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
+            patch.object(main, "get_emergence_age_context", AsyncMock(return_value={})), \
+            patch.object(main, "score_snapshots", MagicMock()) as score_snapshots_mock, \
+            patch.object(main, "score_emergence", MagicMock()), \
+            patch.object(main, "insert_snapshot", AsyncMock()), \
+            patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
+            patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
+        await main.poll_cycle()
+
+    history = score_snapshots_mock.call_args.args[1][42][0]
+    assert history.alpha_price_tao == 1.0
+
+
+@pytest.mark.asyncio
+async def test_poll_cycle_scores_emergence_before_swing_scoring(monkeypatch):
+    main = load_main_with_env(monkeypatch)
+
+    main._db = AsyncMock()
+    main._telegram = None
+    main._cycle_count = 0
+    main.config.WALLET_COLDKEYS = []
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    snap = SubnetSnapshot(netuid=42, polled_at=now, alpha_price_tao=1.2)
+
+    def mark_emergence(snapshots, history_by_netuid, age_ctx, now):
+        snapshots[0].emergence_stage = "nascent"
+        snapshots[0].emergence_score = 76.0
+
+    def assert_emergence_present(snapshots, *args, **kwargs):
+        assert snapshots[0].emergence_stage == "nascent"
+        assert snapshots[0].emergence_score == 76.0
+
+    with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
+            patch.object(main, "get_registry", AsyncMock(return_value={})), \
+            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
+            patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
+            patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
+            patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
+            patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
+            patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
+            patch.object(main, "get_emergence_age_context", AsyncMock(return_value={42: now})), \
+            patch.object(main, "score_emergence", MagicMock(side_effect=mark_emergence)), \
+            patch.object(main, "score_snapshots", MagicMock(side_effect=assert_emergence_present)), \
+            patch.object(main, "insert_snapshot", AsyncMock()), \
+            patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
+            patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
+        await main.poll_cycle()
+
+
+@pytest.mark.asyncio
 async def test_poll_cycle_preserves_previous_price_for_alert_context(monkeypatch):
     main = load_main_with_env(monkeypatch)
 

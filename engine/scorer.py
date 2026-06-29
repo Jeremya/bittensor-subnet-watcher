@@ -242,7 +242,7 @@ def score_snapshots(
     for snap in snapshots:
         relative_value = relative_value_by_netuid.get(snap.netuid)
         spec421 = spec421_by_netuid.get(snap.netuid)
-        if relative_value is None or spec421 is None:
+        if relative_value is None:
             continue
         swing = compute_swing_signal(
             snap,
@@ -265,9 +265,10 @@ def score_snapshots(
         snap.tradability_score = swing.tradability.score
         snap.catalyst_score = swing.catalyst.score
         snap.risk_penalty = swing.risk.penalty
-        snap.price_ema_score = spec421.price_ema.score
-        snap.emission_value_score = spec421.emission_value.score
-        snap.protocol_context_score = spec421.protocol_context.score
-        snap.spec421_score = spec421.spec421_score
+        if spec421 is not None:
+            snap.price_ema_score = spec421.price_ema.score
+            snap.emission_value_score = spec421.emission_value.score
+            snap.protocol_context_score = spec421.protocol_context.score
+            snap.spec421_score = spec421.spec421_score
         snap.swing_score = swing.swing_score
         snap.composite_score = swing.swing_score
