@@ -1,29 +1,31 @@
 # TAO Subnet Investment Criteria Framework
-**Date:** 2026-04-01 (revised 2026-04-03)
+**Date:** 2026-04-01 (revised 2026-06-29)
 **Status:** Complete (research notes from brainstorming session)
+
+> **Spec 421 update, 2026-06:** The direct emission-share model is now price-based:
+> `root_proportion × SubnetMovingPrice × (1 - MinerBurned)`. Flow remains a demand
+> and risk signal, but it is no longer the direct emission-share formula.
 
 ---
 
-## Core Mechanic: dTAO Flow-Based Emissions
+## Current Core Mechanic: Spec 421 Price-Based Emissions
 
-The fundamental dynamic in dTAO (as of November 2025):
+As of Spec 421 on mainnet, subnet emission share is price-based. The app treats
+price EMA strength and emission value versus market cap as primary scoring inputs,
+while keeping net TAO flow as demand confirmation and risk context.
 
 ```
-TAO Staking Inflows → Emission Share → Validator Rewards → Better Service → More Stakers
+Moving Price Strength → Emission Share → Validator Rewards → Better Service → More Demand
 ```
 
-Subnet emission share is determined by **net TAO inflows/outflows**, not alpha token price.
-TAO holders vote with capital: staking in = more emissions, unstaking = fewer.
-
-Each subnet's share is computed as:
+Each subnet's emission share is now computed from the Spec 421 structure:
 ```
-share(i) = flow(i)^p / Σflow(j)^p    (p=1 by default, linear)
+share(i) = root_proportion × SubnetMovingPrice × (1 - MinerBurned)
 ```
-where `flow(i)` is the 86.8-day EMA of net TAO inflows into subnet i. The EMA smoothing
-prevents manipulation but introduces ~3-month lag between flow shifts and emission changes.
 
-**Implication for investors:** `alpha_mcap_tao` (TAO in pool) is the cumulative flow stock.
-Its *rate of change* is the leading indicator of future emission share — not current price.
+**Implication for investors:** alpha price strength now has protocol-level importance.
+`alpha_mcap_tao` and `net_tao_flow_tao` still matter, but as demand/liquidity context
+and risk confirmation rather than the direct emission-share formula.
 
 ---
 
@@ -35,9 +37,9 @@ The current emission yield formula remains valid as a **snapshot metric**:
 Annualized Yield = (daily_emission_tao × TAO_price × 365) / alpha_mcap_usd
 ```
 
-**Critical caveat:** `daily_emission_tao` reflects the 86.8-day EMA of past flows.
-A subnet with declining inflows today may still show high yield for months before
-emission share adjusts. Yield is a coincident/lagging signal, not a leading one.
+**Critical caveat:** `daily_emission_tao` reflects current protocol allocation and can
+still be a coincident metric. It should be interpreted alongside price EMA strength,
+emission value versus market cap, and liquidity/risk context.
 
 **Relative value shortcut:**
 
@@ -66,13 +68,14 @@ Emission Rank ÷ MCap Rank
 ## Signal Stack (Ranked by Alpha)
 
 ### Tier 1 — Core (highest alpha)
-1. **TAO inflow direction** — is `alpha_mcap_tao` growing or shrinking week-over-week?
-   This is the actual driver of future emission share. Leading indicator.
-2. **Emission rank ÷ MCap rank ratio** — relative value at current emission rate.
-   Valid but lagged (reflects past flows via 86.8d EMA).
+1. **Spec 421 price EMA strength** — is the subnet's price-based emission setup improving?
+   Primary protocol-thesis input after Spec 421.
+2. **Emission value versus market cap** — relative value at current emission rate.
+   Valid as a current-state value signal, but not sufficient without trend/risk context.
 3. **Annualized emission yield** — absolute yield vs. staking alternatives.
-   Same lag caveat as above.
-4. **Emission rank velocity** — rank change over 7 days (lagged confirmation).
+   Same current-state caveat as above.
+4. **TAO inflow direction** — is `alpha_mcap_tao` growing or shrinking week-over-week?
+   Demand confirmation and liquidity/risk context, not the direct emission-share formula.
 
 ### Tier 2 — Quality Gates (filter out trash)
 5. **GitHub last push date** — >60 days silence on a live subnet = red flag
@@ -81,7 +84,7 @@ Emission Rank ÷ MCap Rank
 8. **Team fingerprint** — same validator hotkey across many subnets = extraction risk
 
 ### Tier 3 — Momentum Confirmation
-9. **Alpha price 7d/30d change** — secondary momentum signal (flows drive price, not vice versa)
+9. **Alpha price 7d/30d change** — secondary momentum signal around the protocol price context
 10. **24h volume vs. mcap ratio** — liquidity health
 11. **Holder distribution** — Gini coefficient of alpha holdings (concentration risk)
 12. **Ownership transfer count** — multiple transfers in short window = instability
@@ -123,17 +126,18 @@ or team fingerprint risk emerging.
 
 ## Scoring Model Notes
 
-The composite score uses four components, all subject to flow-based mechanics:
+The swing score now centers on Spec 421 protocol context, with flow retained as demand
+and risk context:
 
 | Component | What it measures | Lag |
 |---|---|---|
-| Yield | Current emission value vs mcap | ~86.8d (EMA) |
-| Quality | GitHub activity + neuron count | Real-time |
-| Momentum | TAO inflow change (primary) + emission rank (secondary) | tao_in: real-time; rank: ~86.8d |
-| Hype | Social presence (followers + tweet recency) | Real-time |
+| Spec 421 | Price EMA, emission value, protocol context | Current / recent price context |
+| Flow | TAO demand direction and outflow risk | Real-time |
+| Tradability | Liquidity, volume, and exit feasibility | Real-time |
+| Catalyst | Fresh alerts, coverage, and milestones | Real-time |
 
-The momentum score now weights TAO inflow change (the actual flow driver) more heavily
-than emission rank change (the lagged result), reflecting the true causal order.
+Flow remains useful as a demand and risk signal, but it is not treated as the direct
+driver of future emission share after Spec 421.
 
 ---
 

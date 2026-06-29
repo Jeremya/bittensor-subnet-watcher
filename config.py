@@ -23,7 +23,7 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 # ── Scoring weights ───────────────────────────────────────────────────────────
 # Yield is the primary dTAO alpha signal (emission rank ÷ mcap rank arbitrage).
 # Health measures protocol-native subnet stability (ownership, reg cost, GitHub, liquidity).
-# Momentum is net TAO inflow direction — the actual emission share driver.
+# Momentum is net TAO inflow direction — demand/risk context after Spec 421.
 # Hype (X followers/recency) is intentionally excluded from composite: it is
 # gameable, protocol-external, and displayed as informational on the detail page.
 YIELD_MIN_MCAP_USD: float = 50_000.0  # exclude micro-caps from yield scoring
