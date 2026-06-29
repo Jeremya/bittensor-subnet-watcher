@@ -9,13 +9,16 @@ import argparse
 import sqlite3
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Iterable, Mapping
+from urllib.parse import quote
 
 import config
 from engine.flow_impulse import FlowImpulse, classify_flow_impulse
 from models import SubnetSnapshot
 
 _KNOWN_FIELDS = {field.name for field in fields(SubnetSnapshot)}
+_REQUIRED_COLUMNS = {"netuid", "polled_at", "net_tao_flow_tao", "alpha_mcap_tao"}
 
 
 @dataclass(frozen=True)
@@ -38,14 +41,46 @@ def _row_to_snapshot(row: Mapping[str, Any]) -> SubnetSnapshot:
     return SubnetSnapshot(**data)
 
 
+def _readonly_uri(db_path: str) -> str:
+    path = Path(db_path).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"SQLite database not found: {db_path}")
+    return f"file:{quote(str(path), safe='/:')}?mode=ro"
+
+
+def _validate_snapshots_table(
+    conn: sqlite3.Connection,
+    db_path: str,
+) -> list[str]:
+    table_exists = conn.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'snapshots'
+        """
+    ).fetchone()
+    if table_exists is None:
+        raise ValueError(f"snapshots table does not exist in {db_path}")
+
+    table_cols = [row[1] for row in conn.execute("PRAGMA table_info(snapshots)")]
+    missing = sorted(_REQUIRED_COLUMNS - set(table_cols))
+    if missing:
+        raise ValueError(
+            "snapshots table missing required columns: " + ", ".join(missing)
+        )
+    return table_cols
+
+
 def load_snapshots(db_path: str) -> list[SubnetSnapshot]:
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(_readonly_uri(db_path), uri=True)
     conn.row_factory = sqlite3.Row
     try:
-        table_cols = [row[1] for row in conn.execute("PRAGMA table_info(snapshots)")]
+        table_cols = _validate_snapshots_table(conn, db_path)
         cols = [col for col in table_cols if col in _KNOWN_FIELDS]
+        tie_breaker = "id" if "id" in table_cols else "rowid"
         rows = conn.execute(
-            f"SELECT {', '.join(cols)} FROM snapshots ORDER BY polled_at ASC, netuid ASC"
+            f"SELECT {', '.join(cols)} FROM snapshots "
+            f"ORDER BY polled_at ASC, netuid ASC, {tie_breaker} ASC"
         ).fetchall()
     finally:
         conn.close()
@@ -134,6 +169,10 @@ def run_backtest(
 def format_report(report: Mapping[str, Any]) -> str:
     buy_count = report["by_direction"].get("buy", 0)
     sell_count = report["by_direction"].get("sell", 0)
+    top_netuids = sorted(
+        report["by_netuid"].items(),
+        key=lambda item: (-item[1], item[0]),
+    )
     lines = [
         (
             "Flow impulse backtest "
@@ -142,23 +181,47 @@ def format_report(report: Mapping[str, Any]) -> str:
             f"cooldown_hours={report['cooldown_hours']}"
         ),
         f"direction buy={buy_count} sell={sell_count}",
-        "top_examples:",
+        "top_netuids:",
     ]
+    lines.extend(
+        f"  SN{netuid}={count}" for netuid, count in top_netuids[:10]
+    )
+    if not top_netuids:
+        lines.append("  --")
+    lines.append("daily_counts:")
+    lines.extend(
+        f"  {day}={count}" for day, count in report["by_day"].items()
+    )
+    if not report["by_day"]:
+        lines.append("  --")
+    lines.append("top_examples:")
     for example in report["top_examples"]:
         lines.append(
             "  "
             f"SN{example['netuid']} {example['polled_at']} {example['alert_type']} "
             f"flow={example['flow_tao']:+.1f} "
             f"relative={example['relative_flow_pct'] * 100:.1f}% "
-            f"price={example['price_move_pct']} "
+            f"price={_format_price_move(example['price_move_pct'])} "
             f"impact={example['impact_score']:.0f}"
         )
     return "\n".join(lines)
 
 
+def _format_price_move(value: float | None) -> str:
+    if value is None:
+        return "--"
+    return f"{value:+.1f}%"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Backtest flow impulse alert volume.")
     parser.add_argument("--db", default=config.DB_PATH, help="Path to SQLite DB.")
+    parser.add_argument(
+        "--cooldown-hours",
+        type=int,
+        default=config.FLOW_IMPULSE_COOLDOWN_HOURS,
+        help="Direction-specific cooldown window in hours.",
+    )
     parser.add_argument(
         "--limit-examples",
         type=int,
@@ -167,7 +230,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    report = run_backtest(args.db, limit_examples=args.limit_examples)
+    report = run_backtest(
+        args.db,
+        cooldown_hours=args.cooldown_hours,
+        limit_examples=args.limit_examples,
+    )
     print(format_report(report))
     return 0
 
