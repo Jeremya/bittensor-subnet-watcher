@@ -40,6 +40,30 @@ def _positive(value: Optional[float]) -> Optional[float]:
     return float(value)
 
 
+def _is_later_snapshot(
+    candidate: SubnetSnapshot,
+    candidate_index: int,
+    current: SubnetSnapshot,
+    current_index: int,
+) -> bool:
+    if candidate.polled_at is None:
+        return current.polled_at is None and candidate_index > current_index
+    if current.polled_at is None:
+        return True
+    if candidate.polled_at == current.polled_at:
+        return candidate_index > current_index
+    return candidate.polled_at > current.polled_at
+
+
+def _latest_by_netuid(snapshots: list[SubnetSnapshot]) -> list[SubnetSnapshot]:
+    selected: dict[int, tuple[int, SubnetSnapshot]] = {}
+    for index, snap in enumerate(snapshots):
+        current = selected.get(snap.netuid)
+        if current is None or _is_later_snapshot(snap, index, current[1], current[0]):
+            selected[snap.netuid] = (index, snap)
+    return [snap for _, snap in sorted(selected.values(), key=lambda item: item[1].netuid)]
+
+
 def _ordered_price_history(
     current: SubnetSnapshot,
     history: list[SubnetSnapshot],
@@ -53,9 +77,7 @@ def _ordered_price_history(
     ]
     rows.sort(key=lambda row: row.polled_at)
     prices = [float(row.alpha_price_tao) for row in rows]
-    current_price = _positive(current.alpha_price_tao)
-    if current_price is not None:
-        prices.append(current_price)
+    prices.append(float(current.alpha_price_tao))
     return prices
 
 
@@ -70,6 +92,9 @@ def compute_price_ema_score(
     current: SubnetSnapshot,
     history: list[SubnetSnapshot],
 ) -> Spec421Component:
+    if _positive(current.alpha_price_tao) is None:
+        return Spec421Component(score=None, notes=["invalid current alpha price"])
+
     prices = _ordered_price_history(current, history)
     if len(prices) < 4:
         return Spec421Component(score=None, notes=["insufficient price history"])
@@ -110,7 +135,9 @@ def compute_price_ema_score(
 def _raw_emission_yield(snap: SubnetSnapshot) -> Optional[float]:
     if (
         snap.daily_emission_tao is None
+        or snap.daily_emission_tao <= 0
         or snap.tao_usd_price is None
+        or snap.tao_usd_price <= 0
         or snap.alpha_mcap_usd is None
         or snap.alpha_mcap_usd <= 0
     ):
@@ -123,6 +150,7 @@ def _raw_emission_yield(snap: SubnetSnapshot) -> Optional[float]:
 def compute_emission_value_scores(
     snapshots: list[SubnetSnapshot],
 ) -> dict[int, Spec421Component]:
+    snapshots = _latest_by_netuid(snapshots)
     raw_yields = {
         snap.netuid: raw
         for snap in snapshots
@@ -131,7 +159,7 @@ def compute_emission_value_scores(
     valid_mcap = [
         (snap.netuid, snap.alpha_mcap_tao)
         for snap in snapshots
-        if snap.alpha_mcap_tao is not None
+        if _positive(snap.alpha_mcap_tao) is not None
     ]
     valid_mcap.sort(key=lambda item: item[1], reverse=True)
     mcap_rank = {netuid: rank for rank, (netuid, _) in enumerate(valid_mcap, start=1)}
@@ -163,7 +191,12 @@ def compute_emission_value_scores(
                 reasons.append("price-based emission value versus market cap")
 
         mc_rank = mcap_rank.get(snap.netuid)
-        if snap.emission_rank is not None and mc_rank is not None and snap.emission_rank > 0:
+        if (
+            raw is not None
+            and snap.emission_rank is not None
+            and mc_rank is not None
+            and snap.emission_rank > 0
+        ):
             ratio = mc_rank / snap.emission_rank
             rank_score = _clamp(50.0 + (ratio - 1.0) * 35.0)
             parts.append(rank_score)
@@ -237,6 +270,7 @@ def compute_spec421_signals(
     snapshots: list[SubnetSnapshot],
     history_by_netuid: dict[int, list[SubnetSnapshot]],
 ) -> dict[int, Spec421Signal]:
+    snapshots = _latest_by_netuid(snapshots)
     emission_values = compute_emission_value_scores(snapshots)
     result: dict[int, Spec421Signal] = {}
     for snap in snapshots:

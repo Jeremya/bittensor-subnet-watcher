@@ -69,6 +69,15 @@ def test_price_ema_score_missing_history_is_unavailable():
     assert "insufficient price history" in signal.notes
 
 
+def test_price_ema_score_invalid_current_price_is_unavailable():
+    for invalid_price in (None, 0.0, -0.1):
+        current = make_snap(alpha_price_tao=invalid_price)
+        signal = compute_price_ema_score(current, price_history([1.0, 1.1, 1.2, 1.3]))
+
+        assert signal.score is None
+        assert "invalid current alpha price" in signal.notes
+
+
 def test_emission_value_scores_reward_emission_discount_under_price_based_model():
     cheap = make_snap(
         netuid=1,
@@ -100,6 +109,78 @@ def test_emission_value_scores_suppress_micro_caps():
     assert "below emission-value market-cap floor" in scores[1].notes
 
 
+def test_emission_value_scores_use_latest_duplicate_snapshot_independent_of_order():
+    older = make_snap(
+        netuid=1,
+        polled_at=datetime(2026, 6, 29, 10, 0, tzinfo=timezone.utc),
+        daily_emission_tao=100.0,
+        alpha_mcap_usd=100_000.0,
+        alpha_mcap_tao=10_000.0,
+        emission_rank=1,
+    )
+    newer = make_snap(
+        netuid=1,
+        polled_at=datetime(2026, 6, 29, 11, 0, tzinfo=timezone.utc),
+        daily_emission_tao=1.0,
+        alpha_mcap_usd=4_000_000.0,
+        alpha_mcap_tao=200.0,
+        emission_rank=50,
+    )
+    peer = make_snap(
+        netuid=2,
+        daily_emission_tao=25.0,
+        alpha_mcap_usd=250_000.0,
+        alpha_mcap_tao=1_000.0,
+        emission_rank=5,
+    )
+
+    first = compute_emission_value_scores([older, newer, peer])
+    second = compute_emission_value_scores([peer, older, newer])
+
+    assert first[1] == second[1]
+    assert first[1].score < first[2].score
+
+
+def test_emission_value_scores_tied_duplicates_use_later_list_item():
+    first = make_snap(netuid=1, daily_emission_tao=100.0, alpha_mcap_usd=100_000.0)
+    second = make_snap(netuid=1, daily_emission_tao=1.0, alpha_mcap_usd=4_000_000.0)
+    peer = make_snap(netuid=2, daily_emission_tao=25.0, alpha_mcap_usd=250_000.0)
+
+    scores = compute_emission_value_scores([second, first, peer])
+
+    assert scores[1].score > scores[2].score
+
+
+def test_emission_value_scores_reject_non_positive_emission_inputs():
+    for overrides in (
+        {"daily_emission_tao": 0.0},
+        {"daily_emission_tao": -1.0},
+        {"tao_usd_price": 0.0},
+        {"tao_usd_price": -300.0},
+    ):
+        snap = make_snap(**overrides)
+
+        scores = compute_emission_value_scores([snap])
+
+        assert scores[1].score is None
+        assert "missing emission-value data" in scores[1].notes
+
+
+def test_emission_value_scores_exclude_non_positive_tao_mcap_rank_contribution():
+    for alpha_mcap_tao in (0.0, -1.0):
+        snap = make_snap(
+            alpha_mcap_tao=alpha_mcap_tao,
+            daily_emission_tao=25.0,
+            alpha_mcap_usd=300_000.0,
+            emission_rank=1,
+        )
+
+        scores = compute_emission_value_scores([snap])
+
+        assert scores[1].score == 50.0
+        assert "price-based emission rank discounted by market cap" not in scores[1].reasons
+
+
 def test_protocol_context_does_not_fake_uncollected_exact_factors():
     current = make_snap(emergence_stage="nascent", emergence_score=76.0)
 
@@ -127,3 +208,36 @@ def test_spec421_signal_combines_available_components_and_notes_missing_factors(
     assert signal.emission_value.score is not None
     assert signal.protocol_context.score is not None
     assert "Spec 421 score uses EMA-price proxy, not exact SubnetMovingPrice" in signal.notes
+
+
+def test_spec421_signals_use_latest_duplicate_snapshot_independent_of_order():
+    older = make_snap(
+        netuid=1,
+        polled_at=datetime(2026, 6, 29, 10, 0, tzinfo=timezone.utc),
+        alpha_price_tao=1.5,
+        daily_emission_tao=100.0,
+        alpha_mcap_usd=100_000.0,
+    )
+    newer = make_snap(
+        netuid=1,
+        polled_at=datetime(2026, 6, 29, 11, 0, tzinfo=timezone.utc),
+        alpha_price_tao=0.7,
+        daily_emission_tao=1.0,
+        alpha_mcap_usd=4_000_000.0,
+    )
+    peer = make_snap(
+        netuid=2,
+        alpha_price_tao=1.1,
+        daily_emission_tao=25.0,
+        alpha_mcap_usd=250_000.0,
+    )
+    history = {
+        1: price_history([1.0, 0.95, 0.9, 0.82]),
+        2: price_history([1.0, 1.05, 1.08, 1.1]),
+    }
+
+    first = compute_spec421_signals([older, newer, peer], history)
+    second = compute_spec421_signals([peer, older, newer], history)
+
+    assert first[1] == second[1]
+    assert first[1].price_ema.is_negative
