@@ -40,6 +40,19 @@ def _positive(value: Optional[float]) -> Optional[float]:
     return float(value)
 
 
+def _score_relevant_values(snap: SubnetSnapshot) -> tuple[object, ...]:
+    return (
+        snap.alpha_price_tao,
+        snap.alpha_mcap_tao,
+        snap.alpha_mcap_usd,
+        snap.daily_emission_tao,
+        snap.tao_usd_price,
+        snap.emission_rank,
+        snap.emergence_stage,
+        snap.emergence_score,
+    )
+
+
 def _is_later_snapshot(
     candidate: SubnetSnapshot,
     candidate_index: int,
@@ -47,10 +60,22 @@ def _is_later_snapshot(
     current_index: int,
 ) -> bool:
     if candidate.polled_at is None:
-        return current.polled_at is None and candidate_index > current_index
+        if current.polled_at is None:
+            if _score_relevant_values(candidate) != _score_relevant_values(current):
+                raise ValueError(
+                    f"ambiguous duplicate Spec 421 snapshot for netuid {candidate.netuid} "
+                    "at timestamp None"
+                )
+            return candidate_index > current_index
+        return False
     if current.polled_at is None:
         return True
     if candidate.polled_at == current.polled_at:
+        if _score_relevant_values(candidate) != _score_relevant_values(current):
+            raise ValueError(
+                f"ambiguous duplicate Spec 421 snapshot for netuid {candidate.netuid} "
+                f"at timestamp {candidate.polled_at.isoformat()}"
+            )
         return candidate_index > current_index
     return candidate.polled_at > current.polled_at
 

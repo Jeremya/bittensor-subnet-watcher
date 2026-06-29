@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from engine.spec421 import (
     compute_emission_value_scores,
     compute_price_ema_score,
@@ -141,14 +143,24 @@ def test_emission_value_scores_use_latest_duplicate_snapshot_independent_of_orde
     assert first[1].score < first[2].score
 
 
-def test_emission_value_scores_tied_duplicates_use_later_list_item():
+def test_emission_value_scores_tied_duplicate_conflict_raises():
     first = make_snap(netuid=1, daily_emission_tao=100.0, alpha_mcap_usd=100_000.0)
     second = make_snap(netuid=1, daily_emission_tao=1.0, alpha_mcap_usd=4_000_000.0)
     peer = make_snap(netuid=2, daily_emission_tao=25.0, alpha_mcap_usd=250_000.0)
 
+    with pytest.raises(ValueError, match="ambiguous duplicate Spec 421 snapshot for netuid 1"):
+        compute_emission_value_scores([second, first, peer])
+
+
+def test_emission_value_scores_tied_identical_duplicates_are_accepted():
+    first = make_snap(netuid=1)
+    second = make_snap(netuid=1)
+    peer = make_snap(netuid=2, daily_emission_tao=25.0, alpha_mcap_usd=250_000.0)
+
     scores = compute_emission_value_scores([second, first, peer])
 
-    assert scores[1].score > scores[2].score
+    assert scores[1].score is not None
+    assert scores[2].score is not None
 
 
 def test_emission_value_scores_reject_non_positive_emission_inputs():
@@ -241,3 +253,11 @@ def test_spec421_signals_use_latest_duplicate_snapshot_independent_of_order():
 
     assert first[1] == second[1]
     assert first[1].price_ema.is_negative
+
+
+def test_spec421_signals_tied_duplicate_conflict_raises():
+    first = make_snap(netuid=1, alpha_price_tao=1.4)
+    second = make_snap(netuid=1, alpha_price_tao=0.7)
+
+    with pytest.raises(ValueError, match="ambiguous duplicate Spec 421 snapshot for netuid 1"):
+        compute_spec421_signals([first, second], {1: price_history([1.0, 0.95, 0.9, 0.82])})
