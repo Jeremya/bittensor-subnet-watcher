@@ -145,7 +145,7 @@ async def poll_cycle() -> None:
             SubnetSnapshot(
                 netuid=r["netuid"],
                 polled_at=datetime.fromisoformat(r["polled_at"]),
-                alpha_price_tao=r.get("alpha_price_tao"),
+                alpha_price_tao=r["alpha_price_tao"],
                 alpha_mcap_tao=r["alpha_mcap_tao"],
                 emission_rank=r["emission_rank"],
                 net_tao_flow_tao=r["net_tao_flow_tao"],

@@ -7,6 +7,14 @@ from unittest.mock import ANY, patch, AsyncMock, MagicMock
 from models import SubnetSnapshot
 
 
+class ItemOnlyRow:
+    def __init__(self, data: dict):
+        self._data = data
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+
 def test_validate_config_called_at_startup(monkeypatch):
     """main.py must call validate_config() before anything else."""
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
@@ -111,6 +119,7 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
     hist_row = {
         "netuid": 42,
         "polled_at": now.isoformat(),
+        "alpha_price_tao": 1.0,
         "alpha_mcap_tao": 1000.0,
         "emission_rank": 10,
         "net_tao_flow_tao": 1.0,
@@ -154,17 +163,19 @@ async def test_poll_cycle_passes_historical_alpha_price_to_scoring(monkeypatch):
     main.config.WALLET_COLDKEYS = []
     now = datetime(2026, 6, 1, tzinfo=timezone.utc)
     snap = SubnetSnapshot(netuid=42, polled_at=now, alpha_price_tao=1.2)
-    hist_row = {
-        "netuid": 42,
-        "polled_at": now.isoformat(),
-        "alpha_price_tao": 1.0,
-        "alpha_mcap_tao": 1000.0,
-        "emission_rank": 10,
-        "net_tao_flow_tao": 1.0,
-        "reg_cost_tao": 2.0,
-        "n_neurons": 100,
-        "max_allowed_uids": 256,
-    }
+    hist_row = ItemOnlyRow(
+        {
+            "netuid": 42,
+            "polled_at": now.isoformat(),
+            "alpha_price_tao": 1.0,
+            "alpha_mcap_tao": 1000.0,
+            "emission_rank": 10,
+            "net_tao_flow_tao": 1.0,
+            "reg_cost_tao": 2.0,
+            "n_neurons": 100,
+            "max_allowed_uids": 256,
+        }
+    )
 
     with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
