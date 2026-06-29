@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import config
+from engine.spec421 import Spec421Signal
 from models import SubnetSnapshot
 
 SEVERE_RISK_ALERTS = {"emission_near_zero", "liquidity_floor"}
@@ -54,6 +55,7 @@ class SwingSignal:
     swing_score: float
     reasons: list[str]
     risks: list[str]
+    spec421: SignalComponent = field(default_factory=lambda: SignalComponent(score=None))
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
@@ -375,16 +377,25 @@ def compute_swing_signal(
     alert_types: set[str],
     covered: bool,
     has_milestone: bool,
+    spec421: Spec421Signal | None = None,
 ) -> SwingSignal:
+    spec421_component = SignalComponent(
+        score=spec421.spec421_score if spec421 is not None else None,
+        reasons=spec421.reasons if spec421 is not None else [],
+        risks=spec421.risks if spec421 is not None else [],
+        is_positive=spec421.spec421_score >= 65.0 if spec421 is not None else False,
+        is_negative=spec421.spec421_score <= 35.0 if spec421 is not None else False,
+        is_strong=spec421.spec421_score >= 75.0 if spec421 is not None else False,
+    )
     flow = compute_flow_score(snap, history)
     tradability = compute_tradability_score(snap)
     catalyst = compute_catalyst_score(alert_types, covered, has_milestone)
     risk = compute_risk_penalty(alert_types, flow.is_negative)
 
     weighted = [
-        (flow.score, 0.40),
-        (relative_value.score, 0.25),
-        (tradability.score, 0.20),
+        (spec421_component.score, 0.40),
+        (flow.score, 0.20),
+        (tradability.score, 0.25),
         (catalyst.score, 0.15),
     ]
     available = [(score, weight) for score, weight in weighted if score is not None]
@@ -395,11 +406,24 @@ def compute_swing_signal(
         base = 0.0
 
     swing_score = round(_clamp(base - risk.penalty), 2)
-    reasons = flow.reasons + relative_value.reasons + tradability.reasons + catalyst.reasons
-    risks = flow.risks + relative_value.risks + tradability.risks + risk.risks
+    reasons = (
+        spec421_component.reasons
+        + flow.reasons
+        + relative_value.reasons
+        + tradability.reasons
+        + catalyst.reasons
+    )
+    risks = (
+        spec421_component.risks
+        + flow.risks
+        + relative_value.risks
+        + tradability.risks
+        + risk.risks
+    )
 
     return SwingSignal(
         netuid=snap.netuid,
+        spec421=spec421_component,
         flow=flow,
         relative_value=relative_value,
         tradability=tradability,

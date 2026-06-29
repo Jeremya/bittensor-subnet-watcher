@@ -359,6 +359,58 @@ def test_score_snapshots_populates_explicit_signal_fields():
     assert snap.momentum_score == snap.swing_score
 
 
+def test_score_snapshots_populates_spec421_fields_and_compatibility_scores():
+    snap = make_snap(
+        1,
+        daily_emission_tao=20.0,
+        alpha_mcap_usd=600_000,
+        tao_usd_price=300.0,
+        volume_24h_alpha=50_000.0,
+        alpha_price_tao=1.25,
+        alpha_mcap_tao=1_000.0,
+        emission_rank=5,
+        emergence_stage="nascent",
+        emergence_score=75.0,
+    )
+    history = [
+        make_snap(
+            1,
+            alpha_price_tao=1.0,
+            alpha_mcap_tao=1_000.0,
+            net_tao_flow_tao=10.0,
+            emission_rank=8,
+        ),
+        make_snap(
+            1,
+            alpha_price_tao=1.05,
+            alpha_mcap_tao=1_000.0,
+            net_tao_flow_tao=8.0,
+            emission_rank=8,
+        ),
+        make_snap(
+            1,
+            alpha_price_tao=1.1,
+            alpha_mcap_tao=1_000.0,
+            net_tao_flow_tao=7.0,
+            emission_rank=8,
+        ),
+    ]
+    history[0].polled_at = datetime.now(timezone.utc) - timedelta(hours=4)
+    history[1].polled_at = datetime.now(timezone.utc) - timedelta(hours=3)
+    history[2].polled_at = datetime.now(timezone.utc) - timedelta(hours=2)
+
+    score_snapshots([snap], {1: history})
+
+    assert snap.price_ema_score is not None
+    assert snap.emission_value_score is not None
+    assert snap.protocol_context_score is not None
+    assert snap.spec421_score is not None
+    assert snap.yield_score == snap.relative_value_score
+    assert snap.health_score == snap.tradability_score
+    assert snap.momentum_score == snap.swing_score
+    assert snap.composite_score == snap.swing_score
+
+
 # ── Hype score ────────────────────────────────────────────────────────────────
 
 def test_hype_score_none_without_social_data():

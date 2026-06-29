@@ -7,6 +7,7 @@ from engine.signals import (
     compute_relative_value_scores,
     compute_swing_signal,
 )
+from engine.spec421 import compute_spec421_signals
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +22,10 @@ def _reference_history_snapshot(history: list[SubnetSnapshot], cutoff: datetime)
 def _raw_yield(snap: SubnetSnapshot) -> Optional[float]:
     """Annualized emission yield: (daily_emission_tao * tao_price * 365) / alpha_mcap_usd
 
-    NOTE: daily_emission_tao reflects a subnet's current share of total TAO emissions,
-    which is determined by net TAO inflows smoothed over an 86.8-day EMA. This means
-    the yield is a lagged metric — it reflects capital flows from the past ~3 months,
-    not the current flow direction. Use momentum (tao_in change) as the leading indicator.
+    NOTE: under Spec 421, daily_emission_tao reflects the subnet's current price-based
+    emission share. This yield is a relative-value metric, not a standalone forecast
+    of future emission share. Use Spec 421 price context plus flow demand/risk context
+    for swing scoring.
 
     Returns None for micro-caps below YIELD_MIN_MCAP_USD — illiquid subnets produce
     extreme ratios that swamp min-max normalization.
@@ -135,13 +136,12 @@ def compute_momentum_score(snap: SubnetSnapshot,
     """
     Momentum score (0–100) based on TAO inflow direction and emission rank trend.
 
-    Subnet emission share is determined by net TAO flows (staking inflows minus
-    outflows), smoothed over an 86.8-day EMA. alpha_mcap_tao is the cumulative
-    TAO staked in the pool; its week-over-week change is the actual flow signal
-    and the leading indicator of future emission share.
+    Net TAO flow remains useful demand/risk context, but under Spec 421 it is no
+    longer the causal emission-share driver. alpha_mcap_tao is the cumulative TAO
+    staked in the pool; its week-over-week change is a flow context signal.
 
-    Emission rank change is kept as a secondary lagged confirmation (+/- 15 pts)
-    because it reflects EMA-smoothed flows from ~3 months prior.
+    Emission rank change is kept as a secondary confirmation (+/- 15 pts)
+    of observed emission outcomes.
 
     Returns None if no historical snapshot exists (new subnet).
     """
@@ -173,8 +173,7 @@ def compute_momentum_score(snap: SubnetSnapshot,
         score += max(-35.0, min(35.0, flow_change * 70.0))
 
     # Secondary: emission rank change (+/- 15 pts)
-    # Lagged confirmation — reflects EMA-smoothed flows from ~86.8 days ago.
-    # Better rank = lower number = larger share of total emissions.
+    # Better rank = lower number = larger current share of total emissions.
     if snap.emission_rank is not None and ref.emission_rank is not None:
         rank_improvement = ref.emission_rank - snap.emission_rank
         # +15 pts for improving 5 positions, -15 pts for losing 5 positions (capped)
@@ -238,10 +237,12 @@ def score_snapshots(
     followers = [s.x_followers for s in snapshots if s.x_followers is not None]
     max_followers = max(followers) if followers else 10000
     relative_value_by_netuid = compute_relative_value_scores(snapshots)
+    spec421_by_netuid = compute_spec421_signals(snapshots, history_by_netuid)
 
     for snap in snapshots:
         relative_value = relative_value_by_netuid.get(snap.netuid)
-        if relative_value is None:
+        spec421 = spec421_by_netuid.get(snap.netuid)
+        if relative_value is None or spec421 is None:
             continue
         swing = compute_swing_signal(
             snap,
@@ -250,6 +251,7 @@ def score_snapshots(
             alert_types=(alert_types_by_netuid or {}).get(snap.netuid, set()),
             covered=(coverage_netuids is not None and snap.netuid in coverage_netuids),
             has_milestone=(milestone_netuids is not None and snap.netuid in milestone_netuids),
+            spec421=spec421,
         )
 
         snap.yield_score = relative_value.score
@@ -263,5 +265,9 @@ def score_snapshots(
         snap.tradability_score = swing.tradability.score
         snap.catalyst_score = swing.catalyst.score
         snap.risk_penalty = swing.risk.penalty
+        snap.price_ema_score = spec421.price_ema.score
+        snap.emission_value_score = spec421.emission_value.score
+        snap.protocol_context_score = spec421.protocol_context.score
+        snap.spec421_score = spec421.spec421_score
         snap.swing_score = swing.swing_score
         snap.composite_score = swing.swing_score

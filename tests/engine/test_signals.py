@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from engine.signals import (
     CATALYST_ALERTS,
     MODERATE_RISK_ALERTS,
@@ -12,6 +14,7 @@ from engine.signals import (
     compute_swing_signal,
     compute_tradability_score,
 )
+from engine.spec421 import Spec421Component, Spec421Signal
 from models import SubnetSnapshot
 
 
@@ -167,6 +170,41 @@ def test_swing_signal_uses_catalyst_and_coverage_context():
     assert "fresh convergence catalyst" in catalyzed.reasons
     assert "fresh analyst coverage" in catalyzed.reasons
     assert "fresh product/research milestone" in catalyzed.reasons
+
+
+def test_swing_signal_weights_spec421_as_primary_component():
+    current = make_snap()
+    history = history_flow([0.0, 0.0, 0.0])
+    relative = compute_relative_value_scores([current])[current.netuid]
+    spec421 = Spec421Signal(
+        netuid=1,
+        price_ema=Spec421Component(score=100.0),
+        emission_value=Spec421Component(score=100.0),
+        protocol_context=Spec421Component(score=100.0),
+        spec421_score=100.0,
+        reasons=["price-based emissions support swing setup"],
+        risks=[],
+        notes=[],
+    )
+
+    signal = compute_swing_signal(
+        current,
+        history,
+        relative,
+        set(),
+        covered=False,
+        has_milestone=False,
+        spec421=spec421,
+    )
+
+    assert signal.spec421.score == 100.0
+    expected = (
+        signal.spec421.score * 0.40
+        + signal.flow.score * 0.20
+        + signal.tradability.score * 0.25
+    ) / 0.85
+    assert signal.swing_score == pytest.approx(expected, abs=0.01)
+    assert "price-based emissions support swing setup" in signal.reasons
 
 
 def test_swing_signal_penalizes_outflow_and_liquidity_risk():
