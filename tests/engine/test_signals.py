@@ -174,9 +174,19 @@ def test_swing_signal_uses_catalyst_and_coverage_context():
 
 def test_swing_signal_weights_spec421_as_primary_component():
     current = make_snap()
-    history = history_flow([0.0, 0.0, 0.0])
+    history = history_flow([-10.0, -10.0, -10.0])
     relative = compute_relative_value_scores([current])[current.netuid]
-    spec421 = Spec421Signal(
+    weak_spec421 = Spec421Signal(
+        netuid=1,
+        price_ema=Spec421Component(score=40.0),
+        emission_value=Spec421Component(score=40.0),
+        protocol_context=Spec421Component(score=40.0),
+        spec421_score=40.0,
+        reasons=[],
+        risks=["price-based emissions weaken swing setup"],
+        notes=[],
+    )
+    strong_spec421 = Spec421Signal(
         netuid=1,
         price_ema=Spec421Component(score=100.0),
         emission_value=Spec421Component(score=100.0),
@@ -187,24 +197,36 @@ def test_swing_signal_weights_spec421_as_primary_component():
         notes=[],
     )
 
-    signal = compute_swing_signal(
+    weak = compute_swing_signal(
         current,
         history,
         relative,
         set(),
         covered=False,
         has_milestone=False,
-        spec421=spec421,
+        spec421=weak_spec421,
+    )
+    strong = compute_swing_signal(
+        current,
+        history,
+        relative,
+        set(),
+        covered=False,
+        has_milestone=False,
+        spec421=strong_spec421,
     )
 
-    assert signal.spec421.score == 100.0
+    assert weak.spec421.score == 40.0
+    assert weak.spec421.is_negative
+    assert strong.spec421.score == 100.0
+    assert strong.swing_score > weak.swing_score
     expected = (
-        signal.spec421.score * 0.40
-        + signal.flow.score * 0.20
-        + signal.tradability.score * 0.25
-    ) / 0.85
-    assert signal.swing_score == pytest.approx(expected, abs=0.01)
-    assert "price-based emissions support swing setup" in signal.reasons
+        strong.spec421.score * 0.40
+        + strong.flow.score * 0.20
+        + strong.tradability.score * 0.25
+    ) / 0.85 - strong.risk.penalty
+    assert strong.swing_score == pytest.approx(expected, abs=0.01)
+    assert "price-based emissions support swing setup" in strong.reasons
 
 
 def test_swing_signal_penalizes_outflow_and_liquidity_risk():

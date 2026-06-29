@@ -384,7 +384,7 @@ def compute_swing_signal(
         reasons=spec421.reasons if spec421 is not None else [],
         risks=spec421.risks if spec421 is not None else [],
         is_positive=spec421.spec421_score >= 65.0 if spec421 is not None else False,
-        is_negative=spec421.spec421_score <= 35.0 if spec421 is not None else False,
+        is_negative=spec421.spec421_score <= 40.0 if spec421 is not None else False,
         is_strong=spec421.spec421_score >= 75.0 if spec421 is not None else False,
     )
     flow = compute_flow_score(snap, history)
