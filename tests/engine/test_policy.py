@@ -43,6 +43,12 @@ def make_signal(
             is_positive=catalyst_strong,
             is_strong=catalyst_strong,
         ),
+        spec421=SignalComponent(
+            score=82.0,
+            reasons=["price-based emission setup"],
+            is_positive=True,
+            is_strong=True,
+        ),
         risk=RiskSignal(
             penalty=45.0 if severe_risk else 0.0,
             risks=["severe liquidity/emission risk"] if severe_risk else [],
@@ -140,6 +146,31 @@ def test_build_signal_from_snapshot_treats_important_buy_as_catalyst():
 
     assert signal.catalyst.is_positive
     assert "large net inflow catalyst" in signal.catalyst.reasons
+
+
+def test_build_signal_from_snapshot_reconstructs_spec421_context():
+    signal = build_signal_from_snapshot(
+        {
+            "netuid": 7,
+            "flow_score": 55.0,
+            "relative_value_score": 60.0,
+            "tradability_score": 70.0,
+            "catalyst_score": None,
+            "risk_penalty": 0.0,
+            "swing_score": 72.0,
+            "spec421_score": 81.0,
+            "price_ema_score": 84.0,
+            "emission_value_score": 76.0,
+            "protocol_context_score": 62.0,
+        },
+        set(),
+        covered=False,
+        has_milestone=False,
+    )
+
+    assert signal.spec421.score == pytest.approx(81.0)
+    assert signal.spec421.is_positive
+    assert "price-based emission setup" in signal.spec421.reasons
 
 
 def test_build_signal_from_snapshot_treats_important_sell_as_moderate_risk():

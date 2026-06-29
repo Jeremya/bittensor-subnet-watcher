@@ -28,6 +28,7 @@ def build_signal_from_snapshot(
     if relative_value_score is None:
         relative_value_score = snapshot.get("yield_score")
     tradability_score = snapshot.get("tradability_score")
+    spec421_score = snapshot.get("spec421_score")
     swing_score = snapshot.get("swing_score")
     if swing_score is None:
         swing_score = snapshot.get("composite_score")
@@ -80,6 +81,13 @@ def build_signal_from_snapshot(
         flow_reasons.append("positive net TAO flow")
     if flow_negative:
         flow_risks.append("sustained net TAO outflow")
+
+    spec421_reasons = []
+    spec421_risks = []
+    if spec421_score is not None and spec421_score >= 65.0:
+        spec421_reasons.append("price-based emission setup")
+    if spec421_score is not None and spec421_score <= 40.0:
+        spec421_risks.append("weak price-based emission setup")
 
     catalyst_reasons = []
     if "convergence" in alert_types:
@@ -141,6 +149,14 @@ def build_signal_from_snapshot(
             is_positive=catalyst_positive,
             is_strong=catalyst_positive,
         ),
+        spec421=SignalComponent(
+            score=spec421_score,
+            reasons=spec421_reasons,
+            risks=spec421_risks,
+            is_positive=spec421_score is not None and spec421_score >= 65.0,
+            is_negative=spec421_score is not None and spec421_score <= 40.0,
+            is_strong=spec421_score is not None and spec421_score >= 75.0,
+        ),
         risk=RiskSignal(
             penalty=round(float(risk_penalty), 2),
             risks=risk_risks,
@@ -148,8 +164,8 @@ def build_signal_from_snapshot(
             moderate_count=moderate_count,
         ),
         swing_score=round(float(swing_score or 0.0), 2),
-        reasons=flow_reasons + catalyst_reasons + tradability_reasons,
-        risks=flow_risks + tradability_risks + risk_risks,
+        reasons=spec421_reasons + flow_reasons + catalyst_reasons + tradability_reasons,
+        risks=spec421_risks + flow_risks + tradability_risks + risk_risks,
     )
 
 
