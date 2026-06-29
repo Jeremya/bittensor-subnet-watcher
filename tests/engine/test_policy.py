@@ -170,7 +170,56 @@ def test_build_signal_from_snapshot_reconstructs_spec421_context():
 
     assert signal.spec421.score == pytest.approx(81.0)
     assert signal.spec421.is_positive
+    assert signal.spec421.is_strong
     assert "price-based emission setup" in signal.spec421.reasons
+    assert signal.reasons[0] == "price-based emission setup"
+
+
+def test_build_signal_from_snapshot_reconstructs_negative_spec421_context():
+    signal = build_signal_from_snapshot(
+        {
+            "netuid": 7,
+            "flow_score": 55.0,
+            "relative_value_score": 60.0,
+            "tradability_score": 70.0,
+            "catalyst_score": None,
+            "risk_penalty": 0.0,
+            "swing_score": 42.0,
+            "spec421_score": 40.0,
+        },
+        set(),
+        covered=False,
+        has_milestone=False,
+    )
+
+    assert signal.spec421.score == pytest.approx(40.0)
+    assert signal.spec421.is_negative
+    assert "weak price-based emission setup" in signal.spec421.risks
+    assert signal.risks[0] == "weak price-based emission setup"
+
+
+def test_build_signal_from_snapshot_leaves_missing_spec421_context_empty():
+    signal = build_signal_from_snapshot(
+        {
+            "netuid": 7,
+            "flow_score": 55.0,
+            "relative_value_score": 60.0,
+            "tradability_score": 70.0,
+            "catalyst_score": None,
+            "risk_penalty": 0.0,
+            "swing_score": 58.0,
+        },
+        set(),
+        covered=False,
+        has_milestone=False,
+    )
+
+    assert signal.spec421.score is None
+    assert not signal.spec421.is_positive
+    assert not signal.spec421.is_negative
+    assert not signal.spec421.is_strong
+    assert "price-based emission setup" not in signal.reasons
+    assert "weak price-based emission setup" not in signal.risks
 
 
 def test_build_signal_from_snapshot_treats_important_sell_as_moderate_risk():
