@@ -194,6 +194,7 @@ async def poll_cycle() -> None:
         prev_snaps_obj[netuid] = SubnetSnapshot(
             netuid=netuid,
             polled_at=datetime.fromisoformat(row["polled_at"]) if row["polled_at"] else start,
+            alpha_price_tao=row["alpha_price_tao"],
             emission_rank=row["emission_rank"],
             gh_stars=row["gh_stars"],
             gh_forks=row["gh_forks"],

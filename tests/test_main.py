@@ -142,3 +142,56 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
     assert history.n_neurons == 100
     assert history.max_allowed_uids == 256
     assert recent_alert_types_mock.await_args.args[1] == signals.SCORING_ALERT_TYPES
+
+
+@pytest.mark.asyncio
+async def test_poll_cycle_preserves_previous_price_for_alert_context(monkeypatch):
+    main = load_main_with_env(monkeypatch)
+
+    main._db = AsyncMock()
+    main._telegram = None
+    main._cycle_count = 0
+    main.config.WALLET_COLDKEYS = []
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    snap = SubnetSnapshot(
+        netuid=42,
+        polled_at=now,
+        alpha_price_tao=1.2,
+        tao_in_tao=1060.0,
+        daily_emission_tao=0.0,
+    )
+    previous_row = {
+        "netuid": 42,
+        "polled_at": now.isoformat(),
+        "alpha_price_tao": 1.0,
+        "alpha_mcap_tao": 1000.0,
+        "tao_in_tao": 1000.0,
+        "emission_rank": 10,
+        "gh_last_push": None,
+        "gh_stars": 0,
+        "gh_forks": 0,
+        "gh_open_issues": 0,
+        "owner_coldkey": "coldkey",
+        "reg_cost_tao": 2.0,
+        "max_allowed_uids": 256,
+    }
+
+    with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
+            patch.object(main, "get_registry", AsyncMock(return_value={})), \
+            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
+            patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[previous_row])), \
+            patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
+            patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
+            patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
+            patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
+            patch.object(main, "get_emergence_age_context", AsyncMock(return_value={})), \
+            patch.object(main, "score_snapshots", MagicMock()), \
+            patch.object(main, "score_emergence", MagicMock()), \
+            patch.object(main, "insert_snapshot", AsyncMock()), \
+            patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])) as alerts_mock, \
+            patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
+            patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
+        await main.poll_cycle()
+
+    prev_snaps_obj = alerts_mock.await_args.args[3]
+    assert prev_snaps_obj[42].alpha_price_tao == 1.0
