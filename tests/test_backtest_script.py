@@ -41,14 +41,16 @@ def test_score_coverage_counts_swing_and_composite_separately():
     snaps = [
         SubnetSnapshot(netuid=1, polled_at=datetime.now(timezone.utc), composite_score=70.0),
         SubnetSnapshot(netuid=2, polled_at=datetime.now(timezone.utc), composite_score=60.0, swing_score=80.0),
+        SubnetSnapshot(netuid=3, polled_at=datetime.now(timezone.utc), spec421_score=75.0),
         SubnetSnapshot(netuid=3, polled_at=datetime.now(timezone.utc)),
     ]
 
     coverage = score_coverage(snaps)
 
+    assert coverage["spec421_score"] == 1
     assert coverage["composite_score"] == 2
     assert coverage["swing_score"] == 1
-    assert coverage["total"] == 3
+    assert coverage["total"] == 4
 
 
 def test_format_report_renders_buckets_and_handles_empty_summaries():

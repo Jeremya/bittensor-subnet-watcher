@@ -45,6 +45,7 @@ def score_coverage(snapshots: list[SubnetSnapshot]) -> dict[str, int]:
     """Count how many snapshots carry each score field — reveals the fallback."""
     return {
         "total": len(snapshots),
+        "spec421_score": sum(1 for s in snapshots if s.spec421_score is not None),
         "swing_score": sum(1 for s in snapshots if s.swing_score is not None),
         "composite_score": sum(1 for s in snapshots if s.composite_score is not None),
     }
@@ -109,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     scored = "swing_score" if coverage["swing_score"] else "composite_score (legacy fallback)"
     print(
         f"Loaded {coverage['total']} snapshots — "
+        f"spec421_score={coverage['spec421_score']}, "
         f"swing_score={coverage['swing_score']}, composite_score={coverage['composite_score']}"
     )
     print(f"Backtesting against: {scored}\n")
