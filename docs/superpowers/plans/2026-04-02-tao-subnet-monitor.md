@@ -383,7 +383,7 @@ DB_PATH: str = os.getenv("DB_PATH", "./data/monitor.db")
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
 # ── Scoring weights ───────────────────────────────────────────────────────────
-# Yield is the primary dTAO alpha signal (emission rank ÷ mcap rank arbitrage).
+# Yield is retained as a relative-value signal; Spec 421 is the primary protocol thesis.
 # Quality gates out dead subnets. Momentum confirms entry timing.
 YIELD_WEIGHT: float = 0.40
 QUALITY_WEIGHT: float = 0.30

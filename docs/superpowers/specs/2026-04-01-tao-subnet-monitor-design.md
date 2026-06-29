@@ -136,7 +136,7 @@ Weights are defined as constants in `config.py` with inline comments explaining 
 
 ```python
 # config.py — scoring weights
-# Yield is the primary dTAO alpha signal (emission rank ÷ mcap rank arbitrage).
+# Yield is retained as a relative-value signal; Spec 421 is the primary protocol thesis.
 # Quality gates out dead subnets. Momentum confirms entry timing.
 YIELD_WEIGHT = 0.40
 QUALITY_WEIGHT = 0.30

@@ -21,7 +21,7 @@ DB_PATH: str = os.getenv("DB_PATH", "./data/monitor.db")
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
 # ── Scoring weights ───────────────────────────────────────────────────────────
-# Yield is the primary dTAO alpha signal (emission rank ÷ mcap rank arbitrage).
+# Yield is retained as a relative-value signal; Spec 421 is the primary protocol thesis.
 # Health measures protocol-native subnet stability (ownership, reg cost, GitHub, liquidity).
 # Momentum is net TAO inflow direction — demand/risk context after Spec 421.
 # Hype (X followers/recency) is intentionally excluded from composite: it is
