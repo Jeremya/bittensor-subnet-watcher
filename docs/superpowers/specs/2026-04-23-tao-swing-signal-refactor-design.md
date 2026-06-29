@@ -148,8 +148,9 @@ Clamp to `0..100`.
 If a component is unavailable, renormalize only among positive score components. Risk penalties still apply if available.
 
 Rationale:
-- Flow gets the largest weight because current mechanics make net TAO flow the leading emission driver.
-- Relative value remains meaningful but is lagged.
+- Spec 421 price context is the primary protocol thesis after the June 2026 emission change.
+- Flow remains useful demand and risk context, not the direct emission-share driver.
+- Relative value remains meaningful as a current-state value signal.
 - Tradability matters heavily for a swing horizon.
 - Catalysts help timing but are less reliable than chain data.
 
