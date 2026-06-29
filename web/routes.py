@@ -400,6 +400,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
                 pos["allocation_pct"] = aggregate["allocation_pct"] * 100
                 snap = snapshots_by_netuid.get(pos["netuid"])
                 pos["score"] = snap.get("composite_score") if snap else None
+                pos["spec421_score"] = snap.get("spec421_score") if snap else None
                 pos["recommendation"] = recs["table_actions"].get(
                     pos["netuid"],
                     {

@@ -103,10 +103,33 @@ async def test_dashboard_shows_mcap_usd(app, db):
     assert "$2.1M" in resp.text
 
 
+async def test_dashboard_shows_spec421_score(app, db):
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(
+        db,
+        SubnetSnapshot(
+            netuid=1,
+            polled_at=now,
+            composite_score=75.0,
+            spec421_score=77.0,
+            price_ema_score=82.0,
+            emission_value_score=71.0,
+            protocol_context_score=55.0,
+        ),
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/")
+    assert response.status_code == 200
+    assert "Spec 421" in response.text
+    assert "77.0" in response.text
+
+
 async def test_subnet_detail_returns_200(app, db):
     now = datetime.now(timezone.utc)
     await insert_snapshot(db, SubnetSnapshot(netuid=5, polled_at=now,
                                               composite_score=72.0,
+                                              spec421_score=77.0,
+                                              price_ema_score=82.0,
                                               emission_rank=3,
                                               alpha_mcap_tao=1000.0))
     await upsert_registry_entry(db, 5, "Templar", None, None, None)
@@ -116,6 +139,8 @@ async def test_subnet_detail_returns_200(app, db):
     assert "Templar" in resp.text
     assert "SN5" in resp.text
     assert "Chain Stats" in resp.text
+    assert "Spec 421" in resp.text
+    assert "Price EMA" in resp.text
 
 
 async def test_subnet_detail_returns_404_for_unknown(app):

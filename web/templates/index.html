@@ -135,6 +135,7 @@
       <thead>
         <tr>
           <th>#</th><th>Subnet</th><th>Score</th>
+          <th>Spec 421</th>
           <th>Em. Rank</th><th>MC. Rank</th>
           <th>MCap</th><th>Emit/day</th><th>Trend</th>
         </tr>
@@ -145,6 +146,10 @@
         {% set cls = "score-high" if score and score >= 70
                      else ("score-med" if score and score >= 40
                      else ("score-low" if score else "score-null")) %}
+        {% set s421 = row.spec421_score %}
+        {% set s421_cls = "score-high" if s421 is not none and s421 >= 70
+                          else ("score-med" if s421 is not none and s421 >= 40
+                          else ("score-low" if s421 is not none else "score-null")) %}
         {% set trend_cls = "trend-up" if row.trend == "▲"
                            else ("trend-down" if row.trend == "▼" else "trend-flat") %}
         <tr class="clickable" data-category="{{ row.category or '' }}" onclick="location.href='/subnet/{{ row.netuid }}'">
@@ -161,6 +166,7 @@
             </span>
           </td>
           <td class="{{ cls }}">{{ "%.1f"|format(score) if score else "—" }}</td>
+          <td class="{{ s421_cls }}">{{ "%.1f"|format(s421) if s421 is not none else "—" }}</td>
           <td>{{ ("#" ~ row.emission_rank) if row.emission_rank else "—" }}</td>
           <td>{{ ("#" ~ row.mcap_rank) if row.mcap_rank else "—" }}</td>
           <td>{{ fmt_usd(row.alpha_mcap_usd) }}</td>

@@ -99,6 +99,23 @@
       <div class="verdict {{ vcls }}">{{ verdict }}</div>
       {% endif %}
 
+      {# Spec 421 score row #}
+      {% set s421 = snap.spec421_score %}
+      {% set s421_cls = score_cls(s421) %}
+      <div class="score-row">
+        <span class="score-label">Spec 421</span>
+        {% if s421 is not none %}
+        <div class="score-bar-wrap">
+          <div class="score-bar {{ s421_cls }}" style="width:{{ [(s421 or 0)|int, 100]|min }}%; background:{% if s421 >= 70 %}#00c853{% elif s421 >= 40 %}#ffd600{% else %}#ff5252{% endif %}"></div>
+        </div>
+        <span class="score-val {{ s421_cls }}">{{ "%.1f"|format(s421) }}</span>
+        {% else %}
+        <div class="score-bar-wrap"></div>
+        <span class="score-val" style="color:#555">—</span>
+        {% endif %}
+        <span class="score-why">price-based emission setup</span>
+      </div>
+
       {# Yield score row #}
       {% set y = snap.yield_score %}
       {% set y_cls = score_cls(y) %}
@@ -201,6 +218,15 @@
           {% else %}
           <span class="stat-value" style="color:#555">—</span>
           {% endif %}
+        </div>
+
+        <div class="stat full-width">
+          <span class="stat-label">Spec 421 Components</span>
+          <span class="stat-value">
+            Price EMA {{ "%.0f"|format(snap.price_ema_score) if snap.price_ema_score is not none else "—" }}
+            · Emission value {{ "%.0f"|format(snap.emission_value_score) if snap.emission_value_score is not none else "—" }}
+            · Protocol context {{ "%.0f"|format(snap.protocol_context_score) if snap.protocol_context_score is not none else "—" }}
+          </span>
         </div>
 
         <div class="stat">

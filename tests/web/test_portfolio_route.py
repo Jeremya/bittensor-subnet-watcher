@@ -35,6 +35,7 @@ def client_with_portfolio():
                  "name": "Templar",
                  "category": "AI Training",
                  "composite_score": 81.0,
+                 "spec421_score": 77.0,
                  "momentum_score": 68.0,
              },
              {
@@ -137,6 +138,12 @@ def test_portfolio_renders_table_recommendations(client_with_portfolio):
     assert "Recommendation" in resp.text
     assert "trim" in resp.text.lower()
     assert "hold" in resp.text.lower()
+
+
+def test_portfolio_renders_spec421_score(client_with_portfolio):
+    resp = client_with_portfolio.get("/portfolio")
+    assert "Spec 421" in resp.text
+    assert "77.0" in resp.text
 
 
 def test_portfolio_renders_new_buy_candidate(client_with_portfolio):
