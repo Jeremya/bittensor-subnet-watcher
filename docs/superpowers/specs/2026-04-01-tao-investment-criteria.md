@@ -29,7 +29,7 @@ and risk confirmation rather than the direct emission-share formula.
 
 ---
 
-## Primary Signal: Emission Yield (Current-State, Lagged)
+## Emission Yield As Current-State Value Signal
 
 The current emission yield formula remains valid as a **snapshot metric**:
 
@@ -57,10 +57,10 @@ Emission Rank ÷ MCap Rank
 | Stage | Characteristics | Action |
 |---|---|---|
 | 1. Launch | Low mcap, low emissions, unknown team | Watch only |
-| 2. Proving | GitHub activity picks up, metagraph growing, tao_in rising | **Optimal entry** |
-| 3. Growth | Inflow momentum strong, emission share growing, yield compressing | Ride or trim |
-| 4. Maturity | High tao_in, stable inflows, yield normalized | Hold or exit |
-| 5. Decline | Outflows starting, GitHub silent, metagraph shrinking | Exit |
+| 2. Proving | GitHub activity picks up, metagraph growing, price setup improving | **Optimal entry** |
+| 3. Growth | Price EMA strong, emission setup improving, demand confirmed | Ride or trim |
+| 4. Maturity | Stable price setup, stable demand, yield normalized | Hold or exit |
+| 5. Decline | Price setup weakening, outflows starting, GitHub silent | Exit |
 | 6. Death | Net outflows sustained, near-zero volume, team gone | Avoid |
 
 ---
@@ -112,13 +112,15 @@ Emission Rank ÷ MCap Rank
 
 ## Investment Framework Summary
 
-**Buy signal:** TAO inflow growing, emission rank ÷ mcap rank > 1.3, GitHub active (<30d),
-metagraph growing, team not flagged.
+**Buy signal:** Spec 421 price EMA strength improving, emission value attractive versus
+market cap, GitHub active (<30d), metagraph growing, demand confirmed by non-hostile flow,
+team not flagged.
 
-**Hold signal:** Inflows stable, yield compressing but quality high, team shipping.
+**Hold signal:** Price-based emission setup remains strong, emission value is no longer
+cheap but quality is high, liquidity is acceptable, team still shipping.
 
-**Exit signal:** TAO outflows beginning, emission rank falling, GitHub going silent,
-or team fingerprint risk emerging.
+**Exit signal:** Price setup weakening, severe TAO outflows or liquidity risk emerging,
+emission value deteriorating, GitHub going silent, or team fingerprint risk emerging.
 
 **Avoid:** Any auto-disqualifier above, or yield < staking TAO directly (~18% APY baseline).
 
