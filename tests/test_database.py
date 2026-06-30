@@ -126,6 +126,39 @@ async def test_get_latest_snapshots_with_registry_includes_name(db):
     assert rows[0]["x_handle"] == "apex_subnet"
 
 
+async def test_registry_upsert_preserves_supplemental_fields_when_refresh_lacks_them(db):
+    await upsert_registry_entry(
+        db,
+        1,
+        "Apex",
+        "https://github.com/apex/sn",
+        "apex_subnet",
+        "https://apex.ai",
+    )
+
+    await upsert_registry_entry(db, 1, "Apex Renamed", None, None, None)
+    cursor = await db.execute("SELECT * FROM subnet_registry WHERE netuid=?", (1,))
+    row = await cursor.fetchone()
+    assert row["name"] == "Apex Renamed"
+    assert row["github_url"] == "https://github.com/apex/sn"
+    assert row["x_handle"] == "apex_subnet"
+    assert row["website"] == "https://apex.ai"
+
+    await upsert_registry_entry(
+        db,
+        1,
+        "Apex Renamed",
+        "https://github.com/apex/new",
+        "apex_new",
+        "https://new.apex.ai",
+    )
+    cursor = await db.execute("SELECT * FROM subnet_registry WHERE netuid=?", (1,))
+    row = await cursor.fetchone()
+    assert row["github_url"] == "https://github.com/apex/new"
+    assert row["x_handle"] == "apex_new"
+    assert row["website"] == "https://new.apex.ai"
+
+
 async def test_get_latest_snapshots_with_registry_name_none_without_registry(db):
     now = datetime.now(timezone.utc)
     await insert_snapshot(db, SubnetSnapshot(netuid=42, polled_at=now,
