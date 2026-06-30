@@ -13,7 +13,7 @@ from statistics import mean, median
 from typing import Any, Iterable, Mapping
 
 import config
-from engine.backtest import BUCKETS
+from engine.backtest import BUCKETS, forward_return
 from models import SubnetSnapshot
 from scripts.backtest_signals import load_snapshots
 
@@ -28,16 +28,6 @@ def _bucket_for_score(score: float | None) -> str | None:
             continue
         return label
     return None
-
-
-def _forward_return(anchor: SubnetSnapshot, future: SubnetSnapshot) -> float | None:
-    if (
-        anchor.alpha_price_tao is None
-        or future.alpha_price_tao is None
-        or anchor.alpha_price_tao <= 0
-    ):
-        return None
-    return future.alpha_price_tao / anchor.alpha_price_tao - 1.0
 
 
 def _summarize(values: list[float]) -> dict[str, float | int | None]:
@@ -98,7 +88,7 @@ def run_emergence_backtest(
                 )
                 if future is None:
                     continue
-                ret = _forward_return(anchor, future)
+                ret = forward_return(anchor, future)
                 if ret is None:
                     continue
                 bucket_metrics[bucket][f"forward_{horizon_hours // 24}d"].append(ret)

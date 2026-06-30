@@ -1,0 +1,55 @@
+{
+  "model": "swing_score",
+  "generated_at": "2026-06-30T15:46:44Z",
+  "source_reports": [
+    {
+      "db": "data/monitor_archive_aprmay.db",
+      "range": "2026-04-12T15:34:45Z..2026-05-12T18:32:18Z",
+      "rows": 93105,
+      "note": "Primary calibration source because it has 7d and 14d forward windows."
+    },
+    {
+      "db": "data/monitor.db",
+      "range": "2026-06-15T16:10:15Z..2026-06-25T20:25:59Z",
+      "rows": 61146,
+      "note": "Secondary live check; no 14d forward windows yet."
+    }
+  ],
+  "buckets": [
+    {
+      "label": "<50",
+      "low": null,
+      "high": 50.0,
+      "status": "blocked",
+      "reason": "Apr-May 14d median +0.2% with 50% positive rate; weak separation."
+    },
+    {
+      "label": "50-60",
+      "low": 50.0,
+      "high": 60.0,
+      "status": "caution",
+      "reason": "Apr-May 14d median +3.7% with 62% positive rate, but not a high-conviction buy band."
+    },
+    {
+      "label": "60-70",
+      "low": 60.0,
+      "high": 70.0,
+      "status": "blocked",
+      "reason": "Apr-May 14d median -1.0% with 45% positive rate."
+    },
+    {
+      "label": "70-80",
+      "low": 70.0,
+      "high": 80.0,
+      "status": "approved",
+      "reason": "Apr-May 14d median +6.1% with 58% positive rate; best current validated buy band."
+    },
+    {
+      "label": "80+",
+      "low": 80.0,
+      "high": null,
+      "status": "blocked",
+      "reason": "Apr-May 14d median -12.1% with 46% positive rate; live June 7d strength needs 14d confirmation."
+    }
+  ]
+}

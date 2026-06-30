@@ -41,6 +41,31 @@ def test_run_emergence_backtest_buckets_forward_returns_and_skips_established():
     assert report["buckets"]["60-70"]["forward_7d"]["mean_return"] == pytest.approx(-0.1)
 
 
+def test_run_emergence_backtest_forward_returns_include_emission_yield():
+    rows = [
+        _snap(
+            1,
+            7,
+            emergence_score=75.0,
+            alpha_price_tao=1.0,
+            alpha_mcap_tao=100.0,
+            daily_emission_tao=1.0,
+        ),
+        _snap(
+            1,
+            0,
+            alpha_price_tao=1.0,
+            alpha_mcap_tao=100.0,
+            daily_emission_tao=1.0,
+        ),
+    ]
+
+    report = run_emergence_backtest(rows)
+
+    assert report["buckets"]["70-80"]["forward_7d"]["samples"] == 1
+    assert report["buckets"]["70-80"]["forward_7d"]["mean_return"] == pytest.approx(0.07)
+
+
 def test_format_report_includes_stage_counts_and_no_none_text():
     report = {
         "generated_at": "2026-06-24T00:00:00+00:00",

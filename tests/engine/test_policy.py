@@ -329,12 +329,12 @@ def test_action_for_position_accepts_swing_signal(monkeypatch):
         category_allocation_pct=0.20,
     )
 
-    # Action is unchanged; only the calibration disclosure is added.
-    assert result["action"] == "add"
+    # The 80+ bucket is historically weak, so buy-side add is downgraded.
+    assert result["action"] == "hold"
     assert result["confidence"] == "low"  # capped while the model is unvalidated
     assert result["reasons"][0] == "strong held winner with room to add"
     assert any("not yet validated" in r for r in result["reasons"])
-    assert any("mean-reverted" in r for r in result["reasons"])
+    assert any("blocked by swing calibration" in r for r in result["reasons"])
 
 
 def test_action_for_new_candidate_uses_swing_signal(monkeypatch):
@@ -348,8 +348,20 @@ def test_action_for_new_candidate_uses_swing_signal(monkeypatch):
         category_allocation_pct=0.20,
     )
 
+    assert result is None
+
+
+def test_action_for_new_candidate_allows_approved_calibration_band(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 70.0)
+    monkeypatch.setattr(config, "PORTFOLIO_REPLACE_SCORE_MARGIN", 5.0)
+    monkeypatch.setattr(config, "SWING_SIGNAL_VALIDATED", False)
+    result = action_for_new_candidate(
+        make_signal(swing_score=76.0),
+        weakest_held_score=60.0,
+        category_allocation_pct=0.20,
+    )
+
     assert result["action"] == "new_buy"
     assert result["confidence"] == "low"
-    assert result["reasons"][0] == "outranks weakest held name with a fresh catalyst"
+    assert any("approved swing calibration bucket 70-80" in r for r in result["reasons"])
     assert any("not yet validated" in r for r in result["reasons"])
-    assert any("mean-reverted" in r for r in result["reasons"])

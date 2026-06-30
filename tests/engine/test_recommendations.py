@@ -149,7 +149,7 @@ def test_recommendations_blocks_new_buy_on_illiquid_candidate(monkeypatch):
 
 
 def test_recommendations_emit_new_buy_when_candidate_outranks_weakest_held(monkeypatch):
-    monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 78.0)
+    monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 70.0)
     monkeypatch.setattr(config, "PORTFOLIO_REPLACE_SCORE_MARGIN", 8.0)
     positions = {
         7: {
@@ -162,7 +162,7 @@ def test_recommendations_emit_new_buy_when_candidate_outranks_weakest_held(monke
     }
     snapshots = [
         make_snapshot(netuid=7, name="Cortex", category="Infrastructure", composite_score=62.0),
-        make_snapshot(netuid=14, name="Macro", category="AI Training", composite_score=82.0),
+        make_snapshot(netuid=14, name="Macro", category="AI Training", composite_score=76.0),
     ]
     result = build_portfolio_recommendations(
         positions_by_netuid=positions,
@@ -177,7 +177,7 @@ def test_recommendations_emit_new_buy_when_candidate_outranks_weakest_held(monke
 
 
 def test_recommendations_prefer_explicit_swing_score_for_policy(monkeypatch):
-    monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 78.0)
+    monkeypatch.setattr(config, "PORTFOLIO_NEW_BUY_MIN_SCORE", 70.0)
     monkeypatch.setattr(config, "PORTFOLIO_REPLACE_SCORE_MARGIN", 8.0)
     positions = {
         7: {
@@ -201,7 +201,7 @@ def test_recommendations_prefer_explicit_swing_score_for_policy(monkeypatch):
             name="Macro",
             category="AI Training",
             composite_score=40.0,
-            swing_score=90.0,
+            swing_score=76.0,
         ),
     ]
     result = build_portfolio_recommendations(
@@ -213,7 +213,7 @@ def test_recommendations_prefer_explicit_swing_score_for_policy(monkeypatch):
     )
 
     assert result["new_candidates"][0]["netuid"] == 14
-    assert result["new_candidates"][0]["score"] == pytest.approx(90.0)
+    assert result["new_candidates"][0]["score"] == pytest.approx(76.0)
 
 
 def test_new_buy_requires_positive_flow_or_strong_catalyst(monkeypatch):
@@ -276,11 +276,7 @@ def test_new_buy_is_flagged_unvalidated_and_extended_above_80(monkeypatch):
         milestone_netuids=set(),
     )
 
-    rec = result["new_candidates"][0]
-    assert rec["action"] == "new_buy"
-    assert rec["confidence"] == "low"  # unvalidated model caps buy-side confidence
-    assert any("not yet validated" in r for r in rec["reasons"])
-    assert any("mean-revert" in r for r in rec["reasons"])  # 82 is in the inverted 80+ band
+    assert result["new_candidates"] == []  # 82 is in the blocked 80+ calibration band
 
 
 def test_add_below_80_is_unvalidated_but_not_extended(monkeypatch):
@@ -309,8 +305,36 @@ def test_add_below_80_is_unvalidated_but_not_extended(monkeypatch):
     card = result["table_actions"][3]
     assert card["action"] == "add"
     assert card["confidence"] == "low"
+    assert any("approved swing calibration bucket 70-80" in r for r in card["reasons"])
     assert any("not yet validated" in r for r in card["reasons"])
     assert not any("mean-revert" in r for r in card["reasons"])  # 76 is below the extended band
+
+
+def test_held_add_above_80_is_downgraded_by_calibration(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_ADD_MIN_SCORE", 75.0)
+    monkeypatch.setattr(config, "PORTFOLIO_TRIM_MAX_ALLOC_PCT", 0.25)
+    monkeypatch.setattr(config, "SWING_SIGNAL_VALIDATED", False)
+    positions = {
+        3: {
+            "netuid": 3,
+            "subnet_name": "Templar",
+            "category": "AI Training",
+            "tao_value": 10.0,
+            "allocation_pct": 0.10,
+        }
+    }
+    snapshots = [make_snapshot(netuid=3, composite_score=82.0)]
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={},
+        coverage_netuids={3},
+        milestone_netuids=set(),
+    )
+
+    card = result["table_actions"][3]
+    assert card["action"] == "hold"
+    assert any("blocked by swing calibration bucket 80+" in r for r in card["reasons"])
 
 
 def test_risk_driven_sell_confidence_is_not_downgraded(monkeypatch):

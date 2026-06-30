@@ -40,6 +40,31 @@ def test_backtest_buckets_and_forward_returns():
     assert report["buckets"]["60-70"]["forward_14d"]["mean_return"] == pytest.approx(-0.2)
 
 
+def test_backtest_forward_returns_include_estimated_emission_yield():
+    rows = [
+        make_snap(
+            1,
+            days_ago=7,
+            swing_score=75.0,
+            alpha_price_tao=1.0,
+            alpha_mcap_tao=100.0,
+            daily_emission_tao=1.0,
+        ),
+        make_snap(
+            1,
+            days_ago=0,
+            alpha_price_tao=1.0,
+            alpha_mcap_tao=100.0,
+            daily_emission_tao=1.0,
+        ),
+    ]
+
+    report = run_backtest(rows)
+
+    assert report["buckets"]["70-80"]["forward_7d"]["samples"] == 1
+    assert report["buckets"]["70-80"]["forward_7d"]["mean_return"] == pytest.approx(0.07)
+
+
 def test_backtest_returns_json_friendly_structure():
     report = run_backtest([])
 

@@ -1,6 +1,7 @@
 """Shared swing policy used by subnet detail and portfolio recommendations."""
 from typing import Any, Optional
 import config
+from engine.calibration import CalibrationDecision, classify_swing_score
 from engine.signals import (
     FLOW_CATALYST_ALERTS,
     RiskSignal,
@@ -220,6 +221,10 @@ def verdict_for_subnet(
 _BUY_SIDE_ACTIONS = {"add", "new_buy"}
 
 
+def _calibration_reason(prefix: str, decision: CalibrationDecision) -> str:
+    return f"{prefix} swing calibration bucket {decision.label}: {decision.reason}"
+
+
 def _apply_calibration(
     action: str,
     confidence: str,
@@ -228,20 +233,25 @@ def _apply_calibration(
 ) -> tuple[str, str, list[str]]:
     """Reflect calibration state in buy-side recommendations without changing the action.
 
-    Buy-side actions (add/new_buy) bet that a high score predicts future gains, but
-    the swing model is not yet validated against forward returns. The first backtest
-    also showed scores above SWING_EXTENDED_SCORE historically mean-revert over 14d.
-    Surface both as caution and cap buy-side confidence; risk-driven sell/trim
-    actions are rule-based and pass through untouched.
+    Buy-side actions (add/new_buy) bet that a high score predicts future gains.
+    Gate them through the committed calibration artifact so bands that failed the
+    backtest cannot silently create new exposure. Risk-driven sell/trim actions
+    are rule-based and pass through untouched.
     """
     if action not in _BUY_SIDE_ACTIONS:
         return action, confidence, reasons
     reasons = list(reasons)
-    if swing_score is not None and swing_score >= config.SWING_EXTENDED_SCORE:
-        reasons.append(
-            f"extended: scores above {config.SWING_EXTENDED_SCORE:g} have "
-            "historically mean-reverted over 14d"
-        )
+    decision = classify_swing_score(swing_score)
+    if decision.status == "blocked":
+        reasons.append(_calibration_reason("blocked by", decision))
+        if not config.SWING_SIGNAL_VALIDATED:
+            reasons.append("swing model not yet validated against forward returns")
+        return "hold", "low", reasons
+    if decision.status == "approved":
+        reasons.append(_calibration_reason("approved", decision))
+    elif decision.status in {"caution", "unclassified"}:
+        reasons.append(_calibration_reason("caution", decision))
+        confidence = "low"
     if not config.SWING_SIGNAL_VALIDATED:
         reasons.append("swing model not yet validated against forward returns")
         confidence = "low"
@@ -341,6 +351,9 @@ def action_for_new_candidate(
     if signal.risk.has_severe_risk:
         return None
     if signal.tradability.blocks_new_buy:
+        return None
+    decision = classify_swing_score(signal.swing_score)
+    if decision.status == "blocked":
         return None
     if category_allocation_pct >= config.PORTFOLIO_CATEGORY_MAX_ALLOC_PCT:
         return None

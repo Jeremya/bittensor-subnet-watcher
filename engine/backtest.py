@@ -37,14 +37,28 @@ def _bucket_for_score(score: float | None) -> str | None:
     return None
 
 
-def _forward_return(anchor: SubnetSnapshot, future: SubnetSnapshot) -> float | None:
+def forward_return(anchor: SubnetSnapshot, future: SubnetSnapshot) -> float | None:
     if (
         anchor.alpha_price_tao is None
         or future.alpha_price_tao is None
         or anchor.alpha_price_tao <= 0
     ):
         return None
-    return future.alpha_price_tao / anchor.alpha_price_tao - 1.0
+    price_return = future.alpha_price_tao / anchor.alpha_price_tao - 1.0
+    yield_return = 0.0
+    if (
+        anchor.daily_emission_tao is not None
+        and anchor.daily_emission_tao > 0
+        and anchor.alpha_mcap_tao is not None
+        and anchor.alpha_mcap_tao > 0
+    ):
+        holding_days = (future.polled_at - anchor.polled_at).total_seconds() / 86400.0
+        yield_return = anchor.daily_emission_tao / anchor.alpha_mcap_tao * holding_days
+    return price_return + yield_return
+
+
+def _forward_return(anchor: SubnetSnapshot, future: SubnetSnapshot) -> float | None:
+    return forward_return(anchor, future)
 
 
 def _summarize(values: list[float]) -> dict[str, float | int | None]:
