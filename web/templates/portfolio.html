@@ -21,17 +21,18 @@
     .action-card { border: 1px solid #2a2a2a; border-left-width: 4px; border-radius: 6px; padding: 12px; background: #121212; }
     .action-card.sell { border-left-color: #ff5252; }
     .action-card.trim { border-left-color: #ffd600; }
+    .action-card.hold { border-left-color: #444; }
     .action-card.add, .action-card.new_buy { border-left-color: #00c853; }
     .action-head { display: flex; justify-content: space-between; gap: 12px; }
-    .action-name { color: #f0f0f0; font-weight: bold; }
+    .action-name { color: #f0f0f0; font-weight: bold; min-width: 0; overflow-wrap: anywhere; }
     .action-meta { color: #666; font-size: 0.75rem; text-align: right; }
-    .action-reasons { color: #aaa; font-size: 0.82rem; margin-top: 6px; }
+    .action-reasons { color: #aaa; font-size: 0.82rem; margin-top: 6px; overflow-wrap: anywhere; }
     .wallet-block { margin-top: 28px; }
     .wallet-header { font-size: 0.9rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 6px; }
     .wallet-header span { color: #444; font-size: 0.75rem; margin-left: 8px; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; table-layout: fixed; }
     th { text-align: left; padding: 6px 10px; color: #666; border-bottom: 1px solid #333; }
-    td { padding: 7px 10px; border-bottom: 1px solid #1a1a1a; vertical-align: top; }
+    td { padding: 7px 10px; border-bottom: 1px solid #1a1a1a; vertical-align: top; overflow-wrap: anywhere; }
     tr.total-row td { border-top: 1px solid #333; border-bottom: none; color: #aaa; font-weight: bold; }
     .sn-link { color: #00d4aa; text-decoration: none; }
     .sn-link:hover { text-decoration: underline; }
@@ -50,6 +51,22 @@
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .action-head { flex-direction: column; }
       .action-meta { text-align: left; }
+    }
+    @media (max-width: 700px) {
+      header { flex-wrap: wrap; gap: 8px 16px; }
+      header a { margin-left: 0; }
+      table, thead, tbody, tr, th, td { display: block; width: 100%; }
+      thead { display: none; }
+      tbody { display: flex; flex-direction: column; gap: 10px; }
+      tr { border: 1px solid #242424; border-radius: 6px; background: #121212; padding: 8px 10px; }
+      tr.total-row { background: #151515; }
+      tr.total-row td { border-top: none; }
+      td { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #202020; padding: 7px 0; text-align: right; }
+      td:last-child { border-bottom: none; }
+      td::before { content: attr(data-label); flex: 0 0 96px; color: #666; text-align: left; font-weight: bold; }
+      td[data-label="Subnet"], td[data-label="Recommendation"] { display: block; text-align: left; }
+      td[data-label="Subnet"]::before, td[data-label="Recommendation"]::before { display: block; margin-bottom: 4px; }
+      .rec-reason { overflow-wrap: anywhere; }
     }
   </style>
 </head>
@@ -168,17 +185,17 @@
       <tbody>
         {% for pos in wallet.positions %}
         <tr>
-          <td>
+          <td data-label="Subnet">
             <a class="sn-link" href="/subnet/{{ pos.netuid }}">{{ pos.subnet_label }}</a>
             <span style="color:#444; font-size:0.85em;"> SN{{ pos.netuid }}</span>
           </td>
-          <td>{{ "%.1f"|format(pos.allocation_pct) }}%</td>
-          <td>{{ "%.1f"|format(pos.score) if pos.score is not none else "—" }}</td>
-          <td>{{ "%.1f"|format(pos.spec421_score) if pos.spec421_score is not none else "—" }}</td>
-          <td>{{ fmt_tao(pos.tao_value) }}</td>
-          <td>{{ fmt_usd(pos.usd_value) }}</td>
-          <td>{{ fmt_pnl(pos.pnl_tao, pos.pnl_pct) }}</td>
-          <td>
+          <td data-label="Alloc">{{ "%.1f"|format(pos.allocation_pct) }}%</td>
+          <td data-label="Score">{{ "%.1f"|format(pos.score) if pos.score is not none else "—" }}</td>
+          <td data-label="Spec 421">{{ "%.1f"|format(pos.spec421_score) if pos.spec421_score is not none else "—" }}</td>
+          <td data-label="TAO Value">{{ fmt_tao(pos.tao_value) }}</td>
+          <td data-label="USD Value">{{ fmt_usd(pos.usd_value) }}</td>
+          <td data-label="P&amp;L">{{ fmt_pnl(pos.pnl_tao, pos.pnl_pct) }}</td>
+          <td data-label="Recommendation">
             <span class="rec-pill {{ pos.recommendation.action }}">{{ pos.recommendation.action|replace("_", " ") }}</span>
             {% if pos.recommendation.reasons %}
             <div class="rec-reason">{{ pos.recommendation.reasons[0] }}</div>
@@ -187,14 +204,14 @@
         </tr>
         {% endfor %}
         <tr class="total-row">
-          <td>Total</td>
-          <td>—</td>
-          <td>—</td>
-          <td>—</td>
-          <td>{{ fmt_tao(wallet.total_tao) }}</td>
-          <td>{{ fmt_usd(wallet.total_usd) }}</td>
-          <td>{{ fmt_pnl(wallet.total_pnl_tao, wallet.total_pnl_pct) }}</td>
-          <td>—</td>
+          <td data-label="Subnet">Total</td>
+          <td data-label="Alloc">—</td>
+          <td data-label="Score">—</td>
+          <td data-label="Spec 421">—</td>
+          <td data-label="TAO Value">{{ fmt_tao(wallet.total_tao) }}</td>
+          <td data-label="USD Value">{{ fmt_usd(wallet.total_usd) }}</td>
+          <td data-label="P&amp;L">{{ fmt_pnl(wallet.total_pnl_tao, wallet.total_pnl_pct) }}</td>
+          <td data-label="Recommendation">—</td>
         </tr>
       </tbody>
     </table>

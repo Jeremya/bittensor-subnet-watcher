@@ -146,6 +146,15 @@ def test_portfolio_renders_spec421_score(client_with_portfolio):
     assert "77.0" in resp.text
 
 
+def test_portfolio_table_has_mobile_card_labels(client_with_portfolio):
+    resp = client_with_portfolio.get("/portfolio")
+
+    assert 'data-label="Subnet"' in resp.text
+    assert 'data-label="Spec 421"' in resp.text
+    assert 'data-label="Recommendation"' in resp.text
+    assert "td::before" in resp.text
+
+
 def test_portfolio_renders_new_buy_candidate(client_with_portfolio):
     resp = client_with_portfolio.get("/portfolio")
     assert "Macro" in resp.text
