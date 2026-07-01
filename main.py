@@ -75,11 +75,23 @@ async def poll_cycle() -> None:
     # 1. Collect chain data (price, emission, n_neurons, etc.)
     chain_snapshots = await ChainCollector.collect()
 
+    # Load latest stored snapshots early so portfolio valuation can fall back to
+    # the last known prices when a chain cycle fails before producing snapshots.
+    prev_snapshots = await get_latest_snapshots(_db)
+    prev_by_netuid: dict[int, dict] = {row["netuid"]: row for row in prev_snapshots}
+
     # 1b. Portfolio positions (uses prices from chain_snapshots)
     if config.WALLET_COLDKEYS:
         from collectors.chain import _subtensor as _chain_subtensor
-        price_by_netuid = {s.netuid: s.alpha_price_tao for s in chain_snapshots
-                           if s.alpha_price_tao is not None}
+        price_by_netuid = {
+            row["netuid"]: row["alpha_price_tao"]
+            for row in prev_snapshots
+            if row["alpha_price_tao"] is not None
+        }
+        price_by_netuid.update({
+            s.netuid: s.alpha_price_tao for s in chain_snapshots
+            if s.alpha_price_tao is not None
+        })
         portfolio = await PortfolioCollector.collect(
             _chain_subtensor, config.WALLET_COLDKEYS, price_by_netuid
         )
@@ -108,8 +120,6 @@ async def poll_cycle() -> None:
             snap.x_last_tweet = x_data[snap.netuid].get("x_last_tweet")
 
     # Also carry forward GitHub data from previous snapshot (if available)
-    prev_snapshots = await get_latest_snapshots(_db)
-    prev_by_netuid: dict[int, dict] = {row["netuid"]: row for row in prev_snapshots}
     for snap in chain_snapshots:
         prev = prev_by_netuid.get(snap.netuid)
         if prev and snap.gh_last_push is None:
