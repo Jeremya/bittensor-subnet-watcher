@@ -20,6 +20,7 @@ ALERT_TYPE_EMOJI = {
     "analyst_mention": "📡",
     "milestone":       "🔬",
     "convergence":     "🚨",
+    "collector_stale": "🩺",
 }
 
 

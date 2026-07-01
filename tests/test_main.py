@@ -73,6 +73,7 @@ async def test_poll_cycle_calls_evaluate_convergence(monkeypatch):
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "score_snapshots", MagicMock()), \
             patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "sweep_collector_conditions", AsyncMock(return_value=[])), \
             patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])) as convergence_mock, \
             patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
         await main.poll_cycle()
@@ -116,6 +117,7 @@ async def test_poll_cycle_uses_latest_db_prices_for_portfolio_when_chain_empty(m
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "score_snapshots", MagicMock()), \
             patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "sweep_collector_conditions", AsyncMock(return_value=[])), \
             patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
             patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
         await main.poll_cycle()
@@ -143,6 +145,7 @@ async def test_poll_cycle_does_not_overwrite_portfolio_when_price_unknown(monkey
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "score_snapshots", MagicMock()), \
             patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "sweep_collector_conditions", AsyncMock(return_value=[])), \
             patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
             patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
         await main.poll_cycle()
@@ -195,6 +198,7 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
             patch.object(main, "score_emergence", MagicMock()) as score_emergence_mock, \
             patch.object(main, "insert_snapshot", AsyncMock()), \
             patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "sweep_collector_conditions", AsyncMock(return_value=[])), \
             patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
             patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
         await main.poll_cycle()
@@ -243,6 +247,7 @@ async def test_poll_cycle_passes_historical_alpha_price_to_scoring(monkeypatch):
             patch.object(main, "score_emergence", MagicMock()), \
             patch.object(main, "insert_snapshot", AsyncMock()), \
             patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "sweep_collector_conditions", AsyncMock(return_value=[])), \
             patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
             patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
         await main.poll_cycle()
@@ -282,6 +287,7 @@ async def test_poll_cycle_scores_emergence_before_swing_scoring(monkeypatch):
             patch.object(main, "score_snapshots", MagicMock(side_effect=assert_emergence_present)), \
             patch.object(main, "insert_snapshot", AsyncMock()), \
             patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "sweep_collector_conditions", AsyncMock(return_value=[])), \
             patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
             patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
         await main.poll_cycle()
@@ -331,6 +337,7 @@ async def test_poll_cycle_preserves_previous_price_for_alert_context(monkeypatch
             patch.object(main, "score_emergence", MagicMock()), \
             patch.object(main, "insert_snapshot", AsyncMock()), \
             patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])) as alerts_mock, \
+            patch.object(main, "sweep_collector_conditions", AsyncMock(return_value=[])), \
             patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
             patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
         await main.poll_cycle()

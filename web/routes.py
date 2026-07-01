@@ -30,6 +30,7 @@ from engine.recommendations import (
     build_portfolio_ledger,
     build_portfolio_recommendations,
 )
+from engine.health import compute_collector_health
 from engine.mentions import add_manual_mention
 from engine.policy import build_signal_from_snapshot, verdict_for_subnet
 from engine.signals import SCORING_ALERT_TYPES
@@ -72,6 +73,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             if snap["swing_score"] is not None:
                 signal_ready += 1
         staked_netuids = await get_staked_netuids(db)
+        collector_health = await compute_collector_health(db)
         coverage_netuids = await get_covered_netuids(db, config.ANALYST_COVERAGE_DECAY_HOURS)
         milestone_arxiv_check = await get_collector_state(db, "milestone_last_arxiv_check")
         milestone_hf_check = await get_collector_state(db, "milestone_last_hf_check")
@@ -124,6 +126,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             "subnet_count": len(snapshots),
             "all_categories": all_categories,
             "data_health": data_health,
+            "collector_health": collector_health,
         })
 
     @app.get("/subnet/{netuid}", response_class=HTMLResponse)
@@ -445,5 +448,10 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
     async def api_alerts():
         rows = await get_last_50_alerts(db)
         return [dict(row) for row in rows]
+
+    @app.get("/api/health")
+    async def api_health():
+        from dataclasses import asdict
+        return [asdict(h) for h in await compute_collector_health(db)]
 
     return app

@@ -73,6 +73,12 @@ ANALYST_HANDLES: list[str] = [
 ANALYST_COVERAGE_DECAY_HOURS: int = 72   # coverage badge visible for 72h after mention
 MAX_ANALYST_HANDLES: int = int(os.getenv("MAX_ANALYST_HANDLES", "20"))  # watchlist cap
 
+# ── Collector health ──────────────────────────────────────────────────────────
+HEALTH_CHAIN_STALE_MINUTES: int = 45        # chain rows expected every 15 min
+HEALTH_GITHUB_STALE_HOURS: int = 3          # github refresh runs every 60 min
+HEALTH_MILESTONE_STALE_HOURS: int = 13      # milestone poll runs every 6h
+HEALTH_NULL_RATE_MAX: float = 0.30          # key-field null-rate ceiling (last 24h)
+
 # ── Daily digest ──────────────────────────────────────────────────────────────
 DIGEST_HOUR_LOCAL: int = int(os.getenv("DIGEST_HOUR_LOCAL", "8"))
 

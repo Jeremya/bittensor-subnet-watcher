@@ -16,8 +16,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import config
 config.validate_config()  # exit(1) if missing required env vars
 
-from models import SubnetSnapshot
-from db.database import init_db, insert_snapshot, get_latest_snapshots, \
+from models import SubnetSnapshot, AlertRecord
+from db.database import init_db, insert_snapshot, insert_alert, get_latest_snapshots, \
     get_unsent_alerts, mark_alerts_sent, prune_old_snapshots, get_registry, \
     get_snapshots_for_netuid, \
     upsert_portfolio_position, delete_gone_positions, update_registry_category, \
@@ -31,6 +31,7 @@ from collectors.portfolio import PortfolioCollector
 from engine.scorer import score_snapshots
 from engine.signals import SCORING_ALERT_TYPES
 from engine.emergence import score_emergence
+from engine.health import sweep_collector_conditions
 from engine.alerts import (
     evaluate_alerts,
     evaluate_convergence,
@@ -207,6 +208,19 @@ async def poll_cycle() -> None:
     known_netuids = set(prev_by_netuid.keys())
     await evaluate_alerts(_db, chain_snapshots, registry, prev_snaps_obj, known_netuids)
     await evaluate_convergence(_db, registry)
+
+    # 6b. Collector-health sweep → collector_stale_* conditions (sentinel netuid -1).
+    for entry in await sweep_collector_conditions(_db):
+        name, transition = entry.split(":")
+        await insert_alert(_db, AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=-1,
+            subnet_name="Collector health",
+            alert_type="collector_stale",
+            description=f"{transition}: {name} collector "
+                        + ("has gone stale/degraded" if transition == "entered"
+                           else "is healthy again"),
+        ))
 
     # 7. Send unsent alerts via Telegram
     if _telegram:

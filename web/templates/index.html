@@ -118,6 +118,15 @@
       · {{ "H:" ~ data_health.milestone_hf_check if data_health and data_health.milestone_hf_check else "H:—" }}
     </span>
   </div>
+  {% for h in collector_health %}
+  <div class="health-cell">
+    <span class="health-label">{{ h.name }} collector</span>
+    <span class="health-value {{ 'bad' if h.stale else 'good' }}"
+          title="{{ h.reasons | join('; ') if h.reasons else 'ok' }}">
+      {{ '⛔' if h.stale else '✓' }}
+    </span>
+  </div>
+  {% endfor %}
 </div>
 <div class="layout">
   <div class="sidebar">

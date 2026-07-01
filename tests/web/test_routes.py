@@ -418,3 +418,11 @@ async def test_analysts_page_lists_curated_tweets(app, db):
     assert resp.status_code == 200
     assert "@someone" in resp.text
     assert "SN12" in resp.text
+
+
+async def test_api_health_reports_collectors(app):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/health")
+    assert resp.status_code == 200
+    names = {c["name"] for c in resp.json()}
+    assert names == {"chain", "github", "milestone"}
