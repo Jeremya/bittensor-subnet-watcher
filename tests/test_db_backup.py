@@ -30,3 +30,16 @@ async def test_backup_created_for_existing_nonempty_db(tmp_path):
 async def test_backup_skipped_for_missing_db(tmp_path):
     missing = str(tmp_path / "does_not_exist.db")
     assert backup_db_file(missing) is None
+
+
+@pytest.mark.asyncio
+async def test_no_backup_when_schema_current(tmp_path):
+    """Second init_db on an up-to-date DB must not create a new .bak."""
+    import glob
+    db_path = str(tmp_path / "m.db")
+    db = await init_db(db_path)
+    await db.close()
+    assert glob.glob(f"{db_path}.*.bak") == []   # first init: empty file, no backup
+    db = await init_db(db_path)
+    await db.close()
+    assert glob.glob(f"{db_path}.*.bak") == []   # re-init, schema unchanged: still none

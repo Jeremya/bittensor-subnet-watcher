@@ -18,6 +18,7 @@ MOMENTUM_HISTORY_LIMIT: int = int(MOMENTUM_HISTORY_DAYS * 24 * 60 / POLL_INTERVA
 DASHBOARD_PORT: int = int(os.getenv("DASHBOARD_PORT", "8000"))
 DASHBOARD_HOST: str = os.getenv("DASHBOARD_HOST", "127.0.0.1")
 DB_PATH: str = os.getenv("DB_PATH", "./data/monitor.db")
+RETENTION_FULL_DAYS: int = 90               # full-resolution snapshot window; older rows downsampled to 1/subnet/hour
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
 # ── Scoring weights ───────────────────────────────────────────────────────────

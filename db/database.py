@@ -192,12 +192,59 @@ def backup_db_file(db_path: str, keep: int = 5) -> str | None:
     return backup_path
 
 
+# Tables and migration-added columns init_db() knows how to create. Extend
+# these sets whenever a new table or ADD COLUMN migration is introduced —
+# they gate the pre-migration backup.
+_EXPECTED_TABLES = {
+    "snapshots", "alerts", "subnet_registry", "portfolio_positions",
+    "analyst_watchlist", "analyst_mentions", "subnet_milestones",
+    "collector_state", "condition_states",
+}
+_EXPECTED_SNAPSHOT_COLS = {
+    "hype_score", "net_tao_flow_tao", "max_allowed_uids", "tao_in_tao",
+    "buy_slippage_pct", "sell_slippage_pct", "flow_score",
+    "relative_value_score", "tradability_score", "catalyst_score",
+    "risk_penalty", "swing_score", "reg_demand_score", "slot_fill_score",
+    "flow_accel_score", "emergence_score", "emergence_stage",
+    "price_ema_score", "emission_value_score", "protocol_context_score",
+    "spec421_score", "health_score",
+}
+_EXPECTED_REGISTRY_COLS = {"category", "category_confirmed"}
+_EXPECTED_MILESTONE_COLS = {"ai_summary", "ai_take"}
+
+
+def schema_needs_migration(db_path: str) -> bool:
+    """True if init_db would CREATE a table or ALTER one (→ worth a backup)."""
+    if not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
+        return False   # fresh DB: nothing to protect
+    conn = sqlite3.connect(db_path)
+    try:
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        if not _EXPECTED_TABLES <= tables:
+            return True
+
+        def cols(table: str) -> set[str]:
+            return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+        if not _EXPECTED_SNAPSHOT_COLS <= cols("snapshots"):
+            return True
+        if not _EXPECTED_REGISTRY_COLS <= cols("subnet_registry"):
+            return True
+        if not _EXPECTED_MILESTONE_COLS <= cols("subnet_milestones"):
+            return True
+        return False
+    finally:
+        conn.close()
+
+
 async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
     """Create DB directory, initialize schema, return open connection."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    backup_path = backup_db_file(db_path)
-    if backup_path:
-        logger.info("[DB] pre-migration backup -> %s", backup_path)
+    if schema_needs_migration(db_path):
+        backup_path = backup_db_file(db_path)
+        if backup_path:
+            logger.info("[DB] pre-migration backup -> %s", backup_path)
     conn = await aiosqlite.connect(db_path)
     conn.row_factory = aiosqlite.Row
     await conn.executescript(SCHEMA_SQL)
@@ -325,14 +372,6 @@ async def get_snapshots_for_netuid(db: aiosqlite.Connection,
     cursor = await db.execute(
         "SELECT * FROM snapshots WHERE netuid=? ORDER BY polled_at DESC LIMIT ?",
         (netuid, limit)
-    )
-    return await cursor.fetchall()
-
-
-async def get_all_snapshots(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
-    """Return all snapshots ordered for historical backtesting."""
-    cursor = await db.execute(
-        "SELECT * FROM snapshots ORDER BY netuid ASC, polled_at ASC"
     )
     return await cursor.fetchall()
 
@@ -523,11 +562,32 @@ async def get_last_50_alerts(db: aiosqlite.Connection) -> list[aiosqlite.Row]:
     return await cursor.fetchall()
 
 
-async def prune_old_snapshots(db: aiosqlite.Connection, days: int = 30) -> None:
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    await db.execute("DELETE FROM snapshots WHERE polled_at < ?", (cutoff,))
+async def downsample_old_snapshots(db: aiosqlite.Connection,
+                                   older_than_days: int = None) -> int:
+    """Thin snapshots older than the cutoff to 1 row per subnet per hour.
+
+    Keeps the earliest row in each (netuid, hour) bucket; never deletes rows
+    newer than the cutoff. Replaces the old prune_old_snapshots(days=30) hard
+    delete, which would have destroyed swing-score calibration history.
+    """
+    if older_than_days is None:
+        older_than_days = config.RETENTION_FULL_DAYS
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=older_than_days)).isoformat()
+    # substr(polled_at, 1, 13) = 'YYYY-MM-DDTHH' — the hour bucket; all writes
+    # use Python isoformat() so the format is uniform.
+    cursor = await db.execute("""
+        DELETE FROM snapshots
+        WHERE polled_at < ?
+          AND id NOT IN (
+              SELECT MIN(id) FROM snapshots
+              WHERE polled_at < ?
+              GROUP BY netuid, substr(polled_at, 1, 13)
+          )
+    """, (cutoff, cutoff))
     await db.commit()
-    logger.info("Pruned snapshots older than %d days", days)
+    deleted = cursor.rowcount
+    logger.info("Downsampled %d snapshot rows older than %d days", deleted, older_than_days)
+    return deleted
 
 
 async def upsert_registry_entry(db: aiosqlite.Connection,

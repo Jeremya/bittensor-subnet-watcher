@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from models import SubnetSnapshot, AlertRecord
 from db.database import SCHEMA_SQL, insert_snapshot, get_latest_snapshots, \
     insert_alert, get_unsent_alerts, mark_alerts_sent, is_alert_in_cooldown, \
-    prune_old_snapshots, upsert_registry_entry, \
+    downsample_old_snapshots, upsert_registry_entry, \
     get_latest_snapshots_with_registry, get_emission_rank_24h_ago, \
     get_subnet_detail, get_alerts_for_netuid
 
@@ -102,14 +102,17 @@ async def test_alert_cooldown(db):
     assert not_cool is False
 
 
-async def test_prune_old_snapshots(db):
-    old = datetime.now(timezone.utc) - timedelta(days=31)
+async def test_downsample_never_deletes_all_old_rows(db):
+    """Downsampling keeps at least one row per subnet per hour — it must never
+    wipe history the way the old prune_old_snapshots hard delete did."""
+    old = datetime.now(timezone.utc) - timedelta(days=100)
     recent = datetime.now(timezone.utc)
     await insert_snapshot(db, SubnetSnapshot(netuid=1, polled_at=old))
     await insert_snapshot(db, SubnetSnapshot(netuid=1, polled_at=recent))
-    await prune_old_snapshots(db, days=30)
-    rows = await get_latest_snapshots(db)
-    assert len(rows) == 1  # old row pruned
+    deleted = await downsample_old_snapshots(db, older_than_days=90)
+    assert deleted == 0  # one row per hour bucket already
+    cur = await db.execute("SELECT COUNT(*) FROM snapshots")
+    assert (await cur.fetchone())[0] == 2
 
 
 # ── New DB functions ───────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ config.validate_config()  # exit(1) if missing required env vars
 
 from models import SubnetSnapshot, AlertRecord
 from db.database import init_db, insert_snapshot, insert_alert, get_latest_snapshots, \
-    get_unsent_alerts, mark_alerts_sent, prune_old_snapshots, get_registry, \
+    get_unsent_alerts, mark_alerts_sent, downsample_old_snapshots, get_registry, \
     get_snapshots_for_netuid, \
     upsert_portfolio_position, delete_gone_positions, update_registry_category, \
     get_recent_alert_types_per_netuid, get_active_analyst_coverage_netuids, \
@@ -285,12 +285,12 @@ async def daily_digest() -> None:
 
 
 async def registry_refresh_and_prune() -> None:
-    """Daily: refresh subnet registry and prune old snapshots."""
+    """Daily: refresh subnet registry and downsample old snapshots."""
     from collectors.chain import _subtensor
     if _subtensor:
         dynamic_list = await _subtensor.all_subnets()
         await RegistryCollector.refresh(_db, dynamic_list)
-    await prune_old_snapshots(_db, days=30)
+    await downsample_old_snapshots(_db)
 
 
 # ── Startup ──────────────────────────────────────────────────────────────────
