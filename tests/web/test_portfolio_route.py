@@ -66,6 +66,10 @@ def client_with_portfolio():
                      "reasons": ["position is 60.0% of book"],
                      "score": 81.0,
                      "allocation_pct": 0.60,
+                     "context": [
+                         {"label": "Risk", "value": "tao_outflow", "tone": "danger"},
+                         {"label": "Allocation", "value": "60.0% of portfolio", "tone": "warning"},
+                     ],
                  }
              ],
              "new_candidates": [
@@ -77,11 +81,21 @@ def client_with_portfolio():
                      "reasons": ["outranks weakest held name with a fresh catalyst"],
                      "score": 82.0,
                      "allocation_pct": None,
+                     "context": [
+                         {"label": "Context", "value": "analyst coverage active", "tone": "positive"},
+                     ],
                  }
              ],
              "table_actions": {
-                 3: {"action": "trim", "confidence": "high", "reasons": ["position is 60.0% of book"]},
-                 56: {"action": "hold", "confidence": "low", "reasons": []},
+                 3: {
+                     "action": "trim",
+                     "confidence": "high",
+                     "reasons": ["position is 60.0% of book"],
+                     "context": [
+                         {"label": "Allocation", "value": "60.0% of portfolio", "tone": "warning"},
+                     ],
+                 },
+                 56: {"action": "hold", "confidence": "low", "reasons": [], "context": []},
              },
          }), \
          patch("web.routes.get_staked_netuids", new=AsyncMock(return_value={3, 56})), \
@@ -159,6 +173,19 @@ def test_portfolio_renders_new_buy_candidate(client_with_portfolio):
     resp = client_with_portfolio.get("/portfolio")
     assert "Macro" in resp.text
     assert "New Buy" in resp.text or "NEW BUY" in resp.text
+
+
+def test_portfolio_renders_action_context(client_with_portfolio):
+    resp = client_with_portfolio.get("/portfolio")
+    assert "Risk" in resp.text
+    assert "tao_outflow" in resp.text
+    assert "Allocation" in resp.text
+    assert "60.0% of portfolio" in resp.text
+
+
+def test_portfolio_table_recommendation_prefers_context(client_with_portfolio):
+    resp = client_with_portfolio.get("/portfolio")
+    assert "Allocation: 60.0% of portfolio" in resp.text
 
 
 def test_portfolio_recent_alert_query_includes_flow_aliases_and_legacy_types():

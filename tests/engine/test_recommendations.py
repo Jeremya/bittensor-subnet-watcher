@@ -93,6 +93,32 @@ def test_recommendations_sell_on_thesis_break(monkeypatch):
     assert result["portfolio_actions"][0]["action"] == "sell"
 
 
+def test_sell_recommendation_includes_risk_context(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_TRIM_MAX_ALLOC_PCT", 0.25)
+    positions = {
+        21: {
+            "netuid": 21,
+            "subnet_name": "Vector",
+            "category": "Infrastructure",
+            "tao_value": 12.0,
+            "allocation_pct": 0.30,
+        }
+    }
+    snapshots = [make_snapshot(netuid=21, name="Vector", category="Infrastructure", composite_score=41.0)]
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={21: {"liquidity_floor", "tao_outflow"}},
+        coverage_netuids=set(),
+        milestone_netuids=set(),
+    )
+
+    context = result["portfolio_actions"][0]["context"]
+    assert {"label": "Risk", "value": "liquidity_floor, tao_outflow", "tone": "danger"} in context
+    assert {"label": "Allocation", "value": "30.0% of portfolio", "tone": "neutral"} in context
+    assert {"label": "Context", "value": "no recent analyst coverage or milestone", "tone": "muted"} in context
+
+
 def test_recommendations_trim_on_concentration_without_thesis_break(monkeypatch):
     monkeypatch.setattr(config, "PORTFOLIO_TRIM_MAX_ALLOC_PCT", 0.25)
     positions = {
@@ -114,6 +140,32 @@ def test_recommendations_trim_on_concentration_without_thesis_break(monkeypatch)
     )
 
     assert result["table_actions"][3]["action"] == "trim"
+
+
+def test_trim_recommendation_includes_allocation_context(monkeypatch):
+    monkeypatch.setattr(config, "PORTFOLIO_TRIM_MAX_ALLOC_PCT", 0.25)
+    positions = {
+        3: {
+            "netuid": 3,
+            "subnet_name": "Templar",
+            "category": "AI Training",
+            "tao_value": 34.0,
+            "allocation_pct": 0.34,
+        }
+    }
+    snapshots = [make_snapshot(netuid=3, composite_score=81.0)]
+    result = build_portfolio_recommendations(
+        positions_by_netuid=positions,
+        snapshots=snapshots,
+        alert_types_by_netuid={},
+        coverage_netuids={3},
+        milestone_netuids=set(),
+    )
+
+    context = result["table_actions"][3]["context"]
+    assert {"label": "Allocation", "value": "34.0% of portfolio", "tone": "warning"} in context
+    assert {"label": "Score", "value": "81.0 swing", "tone": "positive"} in context
+    assert {"label": "Context", "value": "analyst coverage active", "tone": "positive"} in context
 
 
 def test_recommendations_blocks_new_buy_on_illiquid_candidate(monkeypatch):

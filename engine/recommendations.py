@@ -133,11 +133,70 @@ def _score(snapshot: dict[str, Any]) -> float | None:
     return snapshot.get("composite_score")
 
 
+def _context_rows(
+    snapshot: dict[str, Any],
+    action: str,
+    alert_types: set[str],
+    allocation_pct: float | None,
+    has_coverage: bool,
+    has_milestone: bool,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    if alert_types:
+        rows.append({
+            "label": "Risk",
+            "value": ", ".join(sorted(alert_types)),
+            "tone": "danger",
+        })
+
+    if allocation_pct is not None:
+        rows.append({
+            "label": "Allocation",
+            "value": f"{allocation_pct * 100:.1f}% of portfolio",
+            "tone": "warning" if action == "trim" else "neutral",
+        })
+
+    score = _score(snapshot)
+    if score is not None:
+        if score < 55:
+            tone = "danger"
+        elif score >= 75:
+            tone = "positive"
+        else:
+            tone = "neutral"
+        rows.append({
+            "label": "Score",
+            "value": f"{score:.1f} swing",
+            "tone": tone,
+        })
+
+    if has_coverage or has_milestone:
+        bits = []
+        if has_coverage:
+            bits.append("analyst coverage active")
+        if has_milestone:
+            bits.append("recent milestone")
+        rows.append({
+            "label": "Context",
+            "value": " + ".join(bits),
+            "tone": "positive",
+        })
+    elif action in ("sell", "trim"):
+        rows.append({
+            "label": "Context",
+            "value": "no recent analyst coverage or milestone",
+            "tone": "muted",
+        })
+
+    return rows
+
+
 def _card(snapshot: dict[str, Any],
           action: str,
           confidence: str,
           reasons: list[str],
-          allocation_pct: float | None) -> dict[str, Any]:
+          allocation_pct: float | None,
+          context: list[dict[str, str]] | None = None) -> dict[str, Any]:
     return {
         "netuid": snapshot["netuid"],
         "subnet_name": snapshot.get("name") or f"SN{snapshot['netuid']}",
@@ -147,6 +206,7 @@ def _card(snapshot: dict[str, Any],
         "score": _score(snapshot),
         "category": snapshot.get("category") or "Other",
         "allocation_pct": allocation_pct,
+        "context": context or [],
     }
 
 
@@ -211,7 +271,23 @@ def build_portfolio_recommendations(
         action = policy["action"]
         confidence = policy["confidence"]
         reasons = policy["reasons"]
-        card = _card(snapshot, action, confidence, reasons, position["allocation_pct"])
+        has_coverage = netuid in coverage_netuids
+        has_milestone = netuid in milestone_netuids
+        card = _card(
+            snapshot,
+            action,
+            confidence,
+            reasons,
+            position["allocation_pct"],
+            _context_rows(
+                snapshot,
+                action,
+                alert_types,
+                position["allocation_pct"],
+                has_coverage,
+                has_milestone,
+            ),
+        )
         table_actions[netuid] = card
         if action != "hold":
             portfolio_actions.append(card)
@@ -249,6 +325,14 @@ def build_portfolio_recommendations(
                 policy["confidence"],
                 policy["reasons"],
                 None,
+                _context_rows(
+                    snapshot,
+                    policy["action"],
+                    alert_types,
+                    None,
+                    netuid in coverage_netuids,
+                    netuid in milestone_netuids,
+                ),
             )
         )
 
