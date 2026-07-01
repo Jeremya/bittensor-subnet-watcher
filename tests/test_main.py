@@ -141,6 +141,35 @@ async def test_poll_cycle_uses_latest_db_prices_for_portfolio_when_chain_empty(m
 
 
 @pytest.mark.asyncio
+async def test_poll_cycle_does_not_overwrite_portfolio_when_price_unknown(monkeypatch):
+    main = load_main_with_env(monkeypatch)
+    main._db = AsyncMock()
+    main._telegram = None
+    main._cycle_count = 0
+    main.config.WALLET_COLDKEYS = ["coldkey1"]
+
+    async def collect_portfolio(subtensor, coldkeys, price_by_netuid):
+        return {"coldkey1": {3: {"alpha_amount": 10.0, "tao_value": None}}}
+
+    with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[])), \
+            patch.object(main.PortfolioCollector, "collect", AsyncMock(side_effect=collect_portfolio)), \
+            patch.object(main, "upsert_portfolio_position", AsyncMock()) as upsert_mock, \
+            patch.object(main, "delete_gone_positions", AsyncMock()) as delete_mock, \
+            patch.object(main, "get_registry", AsyncMock(return_value={})), \
+            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
+            patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
+            patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
+            patch.object(main, "score_snapshots", MagicMock()), \
+            patch.object(main, "evaluate_alerts", AsyncMock(return_value=[])), \
+            patch.object(main, "evaluate_convergence", AsyncMock(return_value=[])), \
+            patch.object(main, "get_unsent_alerts", AsyncMock(return_value=[])):
+        await main.poll_cycle()
+
+    upsert_mock.assert_not_awaited()
+    delete_mock.assert_awaited_once_with(main._db, "coldkey1", {3})
+
+
+@pytest.mark.asyncio
 async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
     main = load_main_with_env(monkeypatch)
     from engine import signals

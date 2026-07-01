@@ -45,7 +45,7 @@ async def test_collect_aggregates_across_hotkeys():
 
 
 @pytest.mark.asyncio
-async def test_collect_missing_price_gives_zero_tao_value():
+async def test_collect_missing_price_leaves_tao_value_unknown():
     subtensor = MagicMock()
     subtensor.get_stake_info_for_coldkey = AsyncMock(return_value=[
         make_stake_info(99, "hotkey_a", 500.0),
@@ -53,7 +53,7 @@ async def test_collect_missing_price_gives_zero_tao_value():
     result = await PortfolioCollector.collect(subtensor, ["coldkey1"], price_by_netuid={})
 
     assert result["coldkey1"][99]["alpha_amount"] == pytest.approx(500.0)
-    assert result["coldkey1"][99]["tao_value"] == pytest.approx(0.0)
+    assert result["coldkey1"][99]["tao_value"] is None
 
 
 @pytest.mark.asyncio

@@ -97,6 +97,13 @@ async def poll_cycle() -> None:
         )
         for coldkey, positions in portfolio.items():
             for netuid, data in positions.items():
+                if data["tao_value"] is None:
+                    logger.warning(
+                        "[PORTFOLIO] skip_unpriced_position coldkey=%.12s... netuid=%s",
+                        coldkey,
+                        netuid,
+                    )
+                    continue
                 await upsert_portfolio_position(
                     _db, coldkey, netuid, data["alpha_amount"], data["tao_value"]
                 )

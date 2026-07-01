@@ -29,12 +29,15 @@ class PortfolioCollector:
                 for s in (stakes or []):
                     netuid = s.netuid
                     alpha = s.stake.tao  # alpha token amount as decimal
-                    price = price_by_netuid.get(netuid, 0.0)
-                    tao_val = alpha * price
+                    price = price_by_netuid.get(netuid)
+                    tao_val = alpha * price if price is not None else None
 
                     if netuid in positions:
                         positions[netuid]["alpha_amount"] += alpha
-                        positions[netuid]["tao_value"] += tao_val
+                        if tao_val is None:
+                            positions[netuid]["tao_value"] = None
+                        elif positions[netuid]["tao_value"] is not None:
+                            positions[netuid]["tao_value"] += tao_val
                     else:
                         positions[netuid] = {"alpha_amount": alpha, "tao_value": tao_val}
             except Exception as exc:
