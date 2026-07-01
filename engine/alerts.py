@@ -4,11 +4,25 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from models import SubnetSnapshot, AlertRecord
 from db.database import is_alert_in_cooldown, insert_alert
+from engine.conditions import advance_condition
 from engine.flow_impulse import FlowImpulse, classify_flow_impulse
 from engine.signals import FLOW_CATALYST_ALERTS
 import config
 
 logger = logging.getLogger(__name__)
+
+# Chronic conditions route through the condition state machine: one alert on
+# confirmed entry, one on confirmed recovery. Everything else stays acute
+# (immediate fire + cooldown): important_buy/sell, whale_inflow, tao_outflow,
+# ownership_transfer, new_entry, hyperparameter_change, github_spike,
+# emergence_watch, milestone, analyst_mention, convergence.
+CHRONIC_ALERT_TYPES = {
+    "emission_near_zero",
+    "emission_divergence",
+    "dead_github",
+    "emission_drop",
+    "liquidity_floor",
+}
 
 
 def _registry_name(registry: dict, netuid: int) -> str:
@@ -383,46 +397,96 @@ async def evaluate_alerts(
         candidates: list[Optional[AlertRecord]] = []
         prev = prev_by_netuid.get(snap.netuid)
 
-        # ── Project-monitoring ────────────────────────────────────────────────
-        # 1. Emission divergence
+        # ── Chronic conditions → state machine ───────────────────────────────
+        # Each check result is an observation: AlertRecord → breached; None →
+        # healthy, UNLESS the check's input data was missing → None (freeze).
+        chronic_observations: list[
+            tuple[str, Optional[bool], Optional[float], Optional[AlertRecord]]
+        ] = []
+
         em_rank = snap.emission_rank
         mc_rank = mcap_rank_by_netuid.get(snap.netuid)
         if em_rank is not None and mc_rank is not None:
-            candidates.append(check_emission_divergence(snap, em_rank, mc_rank))
+            div_alert = check_emission_divergence(snap, em_rank, mc_rank)
+            chronic_observations.append(
+                ("emission_divergence", div_alert is not None,
+                 div_alert.current_value if div_alert else None, div_alert))
+        else:
+            chronic_observations.append(("emission_divergence", None, None, None))
 
-        # 2. Dead GitHub
-        candidates.append(check_dead_github(snap))
+        dg_alert = check_dead_github(snap)
+        dg_known = (snap.gh_last_push is not None and snap.alpha_mcap_usd is not None
+                    and snap.alpha_mcap_usd >= config.DEAD_GITHUB_MIN_MCAP_USD)
+        chronic_observations.append(
+            ("dead_github", (dg_alert is not None) if dg_known else None,
+             dg_alert.current_value if dg_alert else None, dg_alert))
 
-        # 3. Emission drop (requires prev snapshot)
-        if prev:
-            candidates.append(check_emission_drop(snap, prev))
+        ed_alert = check_emission_drop(snap, prev) if prev else None
+        ed_known = (prev is not None and snap.emission_rank is not None
+                    and prev.emission_rank is not None)
+        chronic_observations.append(
+            ("emission_drop", (ed_alert is not None) if ed_known else None,
+             ed_alert.current_value if ed_alert else None, ed_alert))
 
-        # 4. GitHub spike (requires prev)
+        ez_alert = check_emission_near_zero(snap)
+        ez_known = (snap.daily_emission_tao is not None and snap.alpha_mcap_usd is not None
+                    and snap.alpha_mcap_usd >= config.EMISSION_NEAR_ZERO_MIN_MCAP_USD)
+        chronic_observations.append(
+            ("emission_near_zero", (ez_alert is not None) if ez_known else None,
+             ez_alert.current_value if ez_alert else None, ez_alert))
+
+        lf_alert = check_liquidity_floor(snap)
+        lf_known = (snap.volume_24h_alpha is not None and snap.alpha_price_tao is not None
+                    and snap.alpha_mcap_tao is not None and snap.alpha_mcap_tao > 0
+                    and snap.alpha_mcap_usd is not None
+                    and snap.alpha_mcap_usd >= config.LIQUIDITY_MIN_MCAP_USD)
+        chronic_observations.append(
+            ("liquidity_floor", (lf_alert is not None) if lf_known else None,
+             lf_alert.current_value if lf_alert else None, lf_alert))
+
+        for condition, breached, value, source_alert in chronic_observations:
+            transition = await advance_condition(db, snap.netuid, condition, breached, value)
+            if transition == "entered" and source_alert is not None:
+                source_alert.subnet_name = _registry_name(registry, snap.netuid)
+                source_alert.description = f"entered: {source_alert.description}"
+                await insert_alert(db, source_alert)
+                fired.append(source_alert)
+                logger.info("[ALERT] netuid=%d type=%s transition=entered",
+                            snap.netuid, condition)
+            elif transition == "recovered":
+                rec = AlertRecord(
+                    fired_at=datetime.now(timezone.utc),
+                    netuid=snap.netuid,
+                    subnet_name=_registry_name(registry, snap.netuid),
+                    alert_type=condition,
+                    description=f"recovered: {condition.replace('_', ' ')} condition cleared",
+                    current_value=value, threshold=None,
+                )
+                await insert_alert(db, rec)
+                fired.append(rec)
+                logger.info("[ALERT] netuid=%d type=%s transition=recovered",
+                            snap.netuid, condition)
+
+        # ── Acute alerts (immediate fire + cooldown) ──────────────────────────
+        # GitHub spike (requires prev)
         if prev:
             candidates.append(check_github_spike(snap, prev))
 
-        # 5. Ownership transfer (requires prev)
+        # Ownership transfer (requires prev)
         if prev:
             candidates.append(check_ownership_transfer(snap, prev))
 
-        # 7. New entry
+        # New entry
         candidates.append(check_new_entry(snap, known_netuids))
 
-        # ── Capital-protection ────────────────────────────────────────────────
-        # 8. Important buy/sell pressure from emission-adjusted net flow.
+        # Important buy/sell pressure from emission-adjusted net flow.
         candidates.append(check_flow_impulse(snap, prev))
 
-        # 10. Emission approaching zero
-        candidates.append(check_emission_near_zero(snap))
-
-        # 11. Liquidity floor breached
-        candidates.append(check_liquidity_floor(snap))
-
-        # 12. Owner hyperparameter change (requires prev)
+        # Owner hyperparameter change (requires prev)
         if prev:
             candidates.append(check_hyperparameter_change(snap, prev))
 
-        # 13. Emerging candidate crossing watch threshold
+        # Emerging candidate crossing watch threshold
         candidates.append(check_emergence_watch(snap))
 
         # Dedup and persist

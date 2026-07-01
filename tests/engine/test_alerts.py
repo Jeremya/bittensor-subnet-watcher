@@ -454,3 +454,29 @@ async def test_evaluate_alerts_accepts_row_like_registry_values(db):
     alerts = await evaluate_alerts(db, [snap], registry, prev_by_netuid={}, known_netuids=set())
     assert any(a.alert_type == "new_entry" for a in alerts)
     assert any(a.subnet_name == "Apex" for a in alerts)
+
+
+# ── Chronic conditions via state machine ─────────────────────────────────────
+
+async def test_chronic_alert_fires_on_entry_not_every_poll(db):
+    """emission_near_zero: 2nd breached poll fires 'entered', 3rd fires nothing."""
+    snap = make_snap(7, daily_emission_tao=1.0, alpha_mcap_usd=500_000.0)
+    for expected_new in (0, 1, 0):
+        fired = await evaluate_alerts(db, [snap], {}, {}, {7})
+        chronic = [a for a in fired if a.alert_type == "emission_near_zero"]
+        assert len(chronic) == expected_new
+    cur = await db.execute(
+        "SELECT COUNT(*) FROM alerts WHERE alert_type='emission_near_zero'")
+    assert (await cur.fetchone())[0] == 1
+
+
+async def test_chronic_alert_recovers_once(db):
+    bad = make_snap(7, daily_emission_tao=1.0, alpha_mcap_usd=500_000.0)
+    good = make_snap(7, daily_emission_tao=50.0, alpha_mcap_usd=500_000.0)
+    for _ in range(2):
+        await evaluate_alerts(db, [bad], {}, {}, {7})
+    recovered = []
+    for _ in range(4):
+        fired = await evaluate_alerts(db, [good], {}, {}, {7})
+        recovered += [a for a in fired if "recovered" in a.description]
+    assert len(recovered) == 1
