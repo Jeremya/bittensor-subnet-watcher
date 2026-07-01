@@ -368,9 +368,15 @@
     </div>
     {% endif %}
 
-    {% if analyst_mentions %}
     <div class="card full-width" style="margin-top:16px">
       <h3>Analyst Mentions</h3>
+      <form method="post" action="/subnet/{{ snap.netuid }}/mention" style="display:flex;gap:6px;margin:8px 0;">
+        <input name="tweet_url" placeholder="https://x.com/…/status/…" required
+               style="flex:2;background:#111;border:1px solid #333;color:#e0e0e0;padding:4px 8px;font-family:monospace;font-size:0.82rem;border-radius:3px;">
+        <input name="tweet_text" placeholder="tweet text / note (optional)"
+               style="flex:3;background:#111;border:1px solid #333;color:#e0e0e0;padding:4px 8px;font-family:monospace;font-size:0.82rem;border-radius:3px;">
+        <button type="submit" style="background:#1a1a2e;border:1px solid #00d4aa;color:#00d4aa;padding:4px 10px;cursor:pointer;font-family:monospace;font-size:0.82rem;border-radius:3px;">+ tweet</button>
+      </form>
       {% for m in analyst_mentions %}
       <div class="alert-item">
         <div class="alert-type">📡 @{{ m.analyst_handle }}</div>
@@ -378,8 +384,8 @@
         <div class="alert-time"><a href="{{ m.tweet_url }}" target="_blank" style="color:#555">{{ m.mentioned_at[:16] }} UTC →</a></div>
       </div>
       {% endfor %}
+      {% if not analyst_mentions %}<div style="color:#333;font-style:italic;font-size:0.78rem;">No curated tweets yet.</div>{% endif %}
     </div>
-    {% endif %}
 
     <div class="card full-width" style="margin-top:16px">
       <h3>Category</h3>

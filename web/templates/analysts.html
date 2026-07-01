@@ -66,7 +66,30 @@
     <input type="text" name="handle" placeholder="@handle or handle" autocomplete="off">
     <button type="submit">Add</button>
   </form>
-  <p class="note">Dashboard-added handles are stored in the DB. Config handles (ANALYST_HANDLES env var) are shown but can only be removed by editing .env.</p>
+  <p class="note">Handles are informational — automated X collection is retired. Config handles (ANALYST_HANDLES env var) can only be removed by editing .env.</p>
+
+  <h2>Add Tweet</h2>
+  <form class="add-form" method="post" action="/analysts/mention">
+    <input name="netuid" type="number" min="0" max="255" placeholder="netuid" required style="flex:0 0 90px;">
+    <input name="tweet_url" placeholder="https://x.com/…/status/…" required>
+    <input name="tweet_text" placeholder="tweet text / note (optional)">
+    <button type="submit">Add</button>
+  </form>
+  <p class="note">Curated tweets feed catalyst scoring and convergence with a 72h decay.</p>
+
+  <h2>Recent Curated Tweets</h2>
+  <table>
+    <tr><th>When</th><th>Subnet</th><th>Handle</th><th>Text</th></tr>
+    {% for m in recent_mentions %}
+    <tr>
+      <td>{{ m.mentioned_at[:16] }}</td>
+      <td><a href="/subnet/{{ m.netuid }}" style="color:#00d4aa;">SN{{ m.netuid }}{% if m.subnet_name %} {{ m.subnet_name }}{% endif %}</a></td>
+      <td>@{{ m.analyst_handle }}</td>
+      <td><a href="{{ m.tweet_url }}" style="color:#888;">{{ (m.tweet_text or m.tweet_url)[:80] }}</a></td>
+    </tr>
+    {% endfor %}
+    {% if not recent_mentions %}<tr><td colspan="4" class="empty">None yet.</td></tr>{% endif %}
+  </table>
 </div>
 </body>
 </html>

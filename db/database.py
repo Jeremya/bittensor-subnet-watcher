@@ -660,20 +660,36 @@ async def insert_analyst_mention(db: aiosqlite.Connection,
                                  netuid: int,
                                  tweet_url: str,
                                  tweet_text: str,
-                                 mentioned_at: datetime) -> bool:
+                                 mentioned_at: datetime,
+                                 notified: bool = False) -> bool:
     try:
         await db.execute(
             """
             INSERT INTO analyst_mentions
-                (analyst_handle, netuid, tweet_url, tweet_text, mentioned_at)
-            VALUES (?, ?, ?, ?, ?)
+                (analyst_handle, netuid, tweet_url, tweet_text, mentioned_at, notified)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (handle.lstrip("@"), netuid, tweet_url, tweet_text, mentioned_at.isoformat()),
+            (handle.lstrip("@"), netuid, tweet_url, tweet_text,
+             mentioned_at.isoformat(), 1 if notified else 0),
         )
         await db.commit()
         return True
     except aiosqlite.IntegrityError:
         return False
+
+
+async def get_recent_analyst_mentions(db: aiosqlite.Connection,
+                                      limit: int = 30) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        """
+        SELECT m.*, r.name AS subnet_name
+        FROM analyst_mentions m
+        LEFT JOIN subnet_registry r ON m.netuid = r.netuid
+        ORDER BY m.mentioned_at DESC LIMIT ?
+        """,
+        (limit,),
+    )
+    return await cursor.fetchall()
 
 
 async def get_unnotified_analyst_mentions(db: aiosqlite.Connection) -> list[aiosqlite.Row]:

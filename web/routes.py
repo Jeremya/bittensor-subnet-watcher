@@ -11,6 +11,8 @@ from db.database import (
     get_active_analyst_coverage_netuids,
     get_analyst_mentions_for_netuid,
     get_analyst_watchlist,
+    get_recent_analyst_mentions,
+    get_registry,
     get_covered_netuids,
     get_milestones_for_netuid,
     get_latest_snapshots, get_last_50_alerts,
@@ -28,6 +30,7 @@ from engine.recommendations import (
     build_portfolio_ledger,
     build_portfolio_recommendations,
 )
+from engine.mentions import add_manual_mention
 from engine.policy import build_signal_from_snapshot, verdict_for_subnet
 from engine.signals import SCORING_ALERT_TYPES
 
@@ -324,15 +327,33 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         await update_registry_category(db, netuid, category, confirmed=True)
         return RedirectResponse(f"/subnet/{netuid}", status_code=303)
 
+    @app.post("/subnet/{netuid}/mention")
+    async def subnet_add_mention(netuid: int,
+                                 tweet_url: str = Form(...),
+                                 tweet_text: str = Form("")):
+        registry = await get_registry(db)
+        await add_manual_mention(db, registry, netuid, tweet_url, tweet_text)
+        return RedirectResponse(f"/subnet/{netuid}", status_code=303)
+
     @app.get("/analysts", response_class=HTMLResponse)
     async def analysts_page(request: Request):
         db_rows = await get_analyst_watchlist(db)
         db_handles = [row["handle"] for row in db_rows]
         config_handles = config.ANALYST_HANDLES
+        recent_mentions = await get_recent_analyst_mentions(db, limit=30)
         return templates.TemplateResponse(request, "analysts.html", {
             "db_handles": db_handles,
             "config_handles": config_handles,
+            "recent_mentions": recent_mentions,
         })
+
+    @app.post("/analysts/mention")
+    async def analysts_add_mention(netuid: int = Form(...),
+                                   tweet_url: str = Form(...),
+                                   tweet_text: str = Form("")):
+        registry = await get_registry(db)
+        await add_manual_mention(db, registry, netuid, tweet_url, tweet_text)
+        return RedirectResponse("/analysts", status_code=303)
 
     @app.post("/analysts/add")
     async def analysts_add(handle: str = Form(...)):

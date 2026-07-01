@@ -392,3 +392,29 @@ async def test_analysts_remove_dashboard_handle(app, db):
         "SELECT handle FROM analyst_watchlist WHERE handle='toremove'"
     )
     assert await cursor.fetchone() is None
+
+
+async def test_post_subnet_mention_creates_row_and_silent_alert(app, db):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/subnet/9/mention",
+            data={"tweet_url": "https://x.com/analyst/status/42", "tweet_text": "big news"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    cur = await db.execute("SELECT netuid, notified FROM analyst_mentions")
+    netuid, notified = await cur.fetchone()
+    assert netuid == 9 and notified == 1
+    cur = await db.execute("SELECT alert_type, notified FROM alerts")
+    alert_type, alert_notified = await cur.fetchone()
+    assert alert_type == "analyst_mention" and alert_notified == 1
+
+
+async def test_analysts_page_lists_curated_tweets(app, db):
+    from engine.mentions import add_manual_mention
+    await add_manual_mention(db, {}, 12, "https://x.com/someone/status/7", "SN12 catalyst")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/analysts")
+    assert resp.status_code == 200
+    assert "@someone" in resp.text
+    assert "SN12" in resp.text
