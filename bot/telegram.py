@@ -102,3 +102,7 @@ class TelegramBot:
     async def send_health_warning(self, message: str) -> None:
         """Send an operational health warning (not an alert)."""
         await self._try_send(f"⚠️ Health Warning\n{message}")
+
+    async def send_digest(self, text: str) -> bool:
+        """Send the daily digest as a single message."""
+        return await self._try_send(text)

@@ -73,6 +73,9 @@ ANALYST_HANDLES: list[str] = [
 ANALYST_COVERAGE_DECAY_HOURS: int = 72   # coverage badge visible for 72h after mention
 MAX_ANALYST_HANDLES: int = int(os.getenv("MAX_ANALYST_HANDLES", "20"))  # watchlist cap
 
+# ── Daily digest ──────────────────────────────────────────────────────────────
+DIGEST_HOUR_LOCAL: int = int(os.getenv("DIGEST_HOUR_LOCAL", "8"))
+
 # ── AI Signal Interpreter ──────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 AI_INTERPRETER_MODEL: str = "claude-haiku-4-5-20251001"

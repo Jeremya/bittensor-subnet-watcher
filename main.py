@@ -260,6 +260,16 @@ async def milestone_collect() -> None:
     logger.info("[COLLECTOR] milestone_collect done new_alerts=%d", len(new_alerts))
 
 
+async def daily_digest() -> None:
+    """08:00 local: one-message summary of active conditions + collector health."""
+    from engine.digest import build_daily_digest
+    registry = await get_registry(_db)
+    text = await build_daily_digest(_db, registry)
+    if _telegram:
+        await _telegram.send_digest(text)
+    logger.info("[DIGEST] sent chars=%d", len(text))
+
+
 async def registry_refresh_and_prune() -> None:
     """Daily: refresh subnet registry and prune old snapshots."""
     from collectors.chain import _subtensor
@@ -306,6 +316,10 @@ async def main() -> None:
     scheduler.add_job(
         registry_refresh_and_prune, "interval", hours=24,
         max_instances=1, id="registry"
+    )
+    scheduler.add_job(
+        daily_digest, "cron", hour=config.DIGEST_HOUR_LOCAL, minute=0,
+        max_instances=1, id="digest"
     )
     scheduler.start()
 
