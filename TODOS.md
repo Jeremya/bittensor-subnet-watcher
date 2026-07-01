@@ -1,5 +1,20 @@
 # TODOS
 
+## ✅ Trust Phase — DONE (2026-07-01)
+Spec: `docs/superpowers/specs/2026-07-01-trust-phase-design.md`.
+X scraping removed (never produced data) → manual tweet curation on subnet pages +
+`/analysts`. Chronic alerts (emission_near_zero, emission_divergence, dead_github,
+emission_drop, liquidity_floor) route through `condition_states` state machine —
+fire once on entry, once on recovery. Daily 08:00 Telegram digest. Collector health
+panel (`/api/health`) + `collector_stale` alerts. Backups only on schema change;
+30-day snapshot hard delete replaced by 90-day downsample (1 row/subnet/hr).
+
+### Deferred from trust phase
+- **Registry backfill** — 20 subnets missing `github_url`, 22 missing `category`
+  (limits dead_github coverage + category views). Effort: S, mostly data entry.
+- **Slippage null investigation** — ~21% of recent snapshot rows missing
+  `buy_slippage_pct`/`sell_slippage_pct`; feeds tradability_score which gates buys.
+
 ## P0 — Calibration Gate (active)
 
 ### ✅ Backtest runner + first calibration run — DONE (2026-05-29)
