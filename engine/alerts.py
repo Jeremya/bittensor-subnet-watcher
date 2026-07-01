@@ -110,23 +110,6 @@ def check_github_spike(current: SubnetSnapshot,
     return None
 
 
-def check_social_silence(snap: SubnetSnapshot) -> Optional[AlertRecord]:
-    if snap.x_last_tweet is None:
-        return None
-    age_days = (datetime.now(timezone.utc) - snap.x_last_tweet).days
-    if age_days > config.SOCIAL_SILENCE_DAYS:
-        return AlertRecord(
-            fired_at=datetime.now(timezone.utc),
-            netuid=snap.netuid,
-            subnet_name=f"SN{snap.netuid}",
-            alert_type="social_silence",
-            description=f"No tweet in {age_days} days",
-            current_value=float(age_days),
-            threshold=float(config.SOCIAL_SILENCE_DAYS),
-        )
-    return None
-
-
 def check_tao_outflow(snap: SubnetSnapshot) -> Optional[AlertRecord]:
     """Net TAO outflow > NET_OUTFLOW_ALERT_PCT of pool in one poll → capital flight."""
     if snap.net_tao_flow_tao is None or snap.alpha_mcap_tao is None:
@@ -381,7 +364,7 @@ async def evaluate_alerts(
     Returns list of newly fired alerts.
 
     Project-monitoring alerts: emission_divergence, dead_github, emission_drop,
-      github_spike, ownership_transfer, social_silence, new_entry
+      github_spike, ownership_transfer, new_entry
     Capital-protection alerts: important_buy, important_sell,
       emission_near_zero, liquidity_floor, hyperparameter_change
     Legacy helpers kept for compatibility: tao_outflow, whale_inflow
@@ -421,9 +404,6 @@ async def evaluate_alerts(
         # 5. Ownership transfer (requires prev)
         if prev:
             candidates.append(check_ownership_transfer(snap, prev))
-
-        # 6. Social silence
-        candidates.append(check_social_silence(snap))
 
         # 7. New entry
         candidates.append(check_new_entry(snap, known_netuids))

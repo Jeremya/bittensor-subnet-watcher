@@ -10,7 +10,6 @@ from engine.alerts import (
     check_dead_github,
     check_emission_drop,
     check_github_spike,
-    check_social_silence,
     check_new_entry,
     check_ownership_transfer,
     check_tao_outflow,
@@ -84,14 +83,6 @@ def test_github_spike_fires():
     result = check_github_spike(curr, prev)
     assert result is not None
     assert result.alert_type == "github_spike"
-
-
-def test_social_silence_fires():
-    old_tweet = now() - timedelta(days=20)
-    snap = make_snap(1, x_last_tweet=old_tweet)
-    result = check_social_silence(snap)
-    assert result is not None
-    assert result.alert_type == "social_silence"
 
 
 def test_new_entry_fires_for_unknown_netuid():

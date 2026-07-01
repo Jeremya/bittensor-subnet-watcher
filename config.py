@@ -24,8 +24,8 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 # Yield is retained as a relative-value signal; Spec 421 is the primary protocol thesis.
 # Health measures protocol-native subnet stability (ownership, reg cost, GitHub, liquidity).
 # Momentum is net TAO inflow direction — demand/risk context after Spec 421.
-# Hype (X followers/recency) is intentionally excluded from composite: it is
-# gameable, protocol-external, and displayed as informational on the detail page.
+# Hype is no longer computed: automated X collection was retired 2026-07-01
+# (x_* snapshot columns stay dormant; analyst mentions are hand-curated).
 YIELD_MIN_MCAP_USD: float = 50_000.0  # exclude micro-caps from yield scoring
 YIELD_WEIGHT: float = 0.40
 HEALTH_WEIGHT: float = 0.30
@@ -38,7 +38,6 @@ DEAD_GITHUB_DAYS: int = 60                   # no commit in 60 days
 DEAD_GITHUB_MIN_MCAP_USD: float = 500_000.0 # only flag dead GitHub if mcap > $500K
 EMISSION_DROP_RANKS: int = 2                # lose >2 emission ranks in 24h
 GITHUB_SPIKE_MULTIPLIER: float = 2.0        # stars or forks double in 24h
-SOCIAL_SILENCE_DAYS: int = 14               # no tweet in 14 days
 # Capital-protection alerts
 WHALE_INFLOW_PCT: float = 0.05              # net TAO inflow > 5% of pool in one poll
 NET_OUTFLOW_ALERT_PCT: float = 0.03         # net TAO outflow > 3% of pool in one poll
@@ -63,16 +62,13 @@ WALLET_LABELS: list[str] = [l.strip() for l in os.getenv("WALLET_LABELS", "").sp
 # ── Bittensor ────────────────────────────────────────────────────────────────
 BITTENSOR_NETWORK: str = "finney"
 BLOCKS_PER_DAY: int = 7200
-X_SCRAPE_MAX_PER_CYCLE: int = 30            # max subnets per XCollector run
-X_SCRAPE_DELAY_SECONDS: float = 2.0         # delay between X scrapes
 
 # ── Analyst tracking ──────────────────────────────────────────────────────────
 ANALYST_HANDLES: list[str] = [
     h.strip() for h in os.getenv("ANALYST_HANDLES", "").split(",") if h.strip()
 ]
-ANALYST_TWEET_LOOKBACK_HOURS: int = 25   # slightly > poll interval to avoid gaps
 ANALYST_COVERAGE_DECAY_HOURS: int = 72   # coverage badge visible for 72h after mention
-MAX_ANALYST_HANDLES: int = int(os.getenv("MAX_ANALYST_HANDLES", "20"))  # scrape cap
+MAX_ANALYST_HANDLES: int = int(os.getenv("MAX_ANALYST_HANDLES", "20"))  # watchlist cap
 
 # ── AI Signal Interpreter ──────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")

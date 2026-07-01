@@ -79,30 +79,5 @@ def test_partial_name_not_matched():
     assert result == set()
 
 
-@pytest.mark.asyncio
-async def test_collect_inserts_one_row_per_matched_subnet(db):
-    from collectors.analyst import AnalystCollector
-
-    posted_at = datetime(2026, 4, 21, 12, 0, tzinfo=timezone.utc)
-    await add_analyst_handle(db, "db_added")
-
-    with patch("collectors.analyst.config.ANALYST_HANDLES", ["config_added"]), \
-            patch(
-                "collectors.analyst._scrape_tweets",
-                AsyncMock(side_effect=[
-                    [{"url": "https://x.com/a/status/1",
-                      "text": "SN3 and Gradients are moving",
-                      "posted_at": posted_at}],
-                    [],
-                ]),
-            ), \
-            patch("collectors.analyst.asyncio.sleep", AsyncMock()):
-        inserted = await AnalystCollector.collect(db, REGISTRY)
-
-    assert inserted == 2
-    mentions_sn3 = await get_analyst_mentions_for_netuid(db, 3)
-    mentions_sn56 = await get_analyst_mentions_for_netuid(db, 56)
-    assert len(mentions_sn3) == 1
-    assert len(mentions_sn56) == 1
-    assert mentions_sn3[0]["tweet_url"] == "https://x.com/a/status/1"
-    assert mentions_sn56[0]["tweet_url"] == "https://x.com/a/status/1"
+# AnalystCollector was removed 2026-07-01 with the X scraping cut; mentions are
+# now hand-curated (see engine/mentions.py). match_subnets tests above remain.

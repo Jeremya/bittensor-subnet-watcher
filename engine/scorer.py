@@ -182,39 +182,6 @@ def compute_momentum_score(snap: SubnetSnapshot,
     return round(max(0.0, min(100.0, score)), 2)
 
 
-def compute_hype_score(snap: SubnetSnapshot,
-                        max_followers: int = 10000) -> Optional[float]:
-    """
-    Hype score (0–100) based on X/social presence:
-      x_followers normalized to 0–60pts (relative to max across subnets)
-      tweet recency: <3d = 40pts, <7d = 30pts, <14d = 20pts, <30d = 10pts, else 0
-    Returns None if no social data at all.
-    """
-    if snap.x_followers is None and snap.x_last_tweet is None:
-        return None
-
-    score = 0.0
-    now = datetime.now(timezone.utc)
-
-    # Followers component (0–60 pts)
-    if snap.x_followers is not None and max_followers > 0:
-        score += min(snap.x_followers / max_followers, 1.0) * 60.0
-
-    # Tweet recency component (0–40 pts)
-    if snap.x_last_tweet is not None:
-        age_days = (now - snap.x_last_tweet).days
-        if age_days < 3:
-            score += 40.0
-        elif age_days < 7:
-            score += 30.0
-        elif age_days < 14:
-            score += 20.0
-        elif age_days < 30:
-            score += 10.0
-
-    return round(score, 2)
-
-
 def score_snapshots(
     snapshots: list[SubnetSnapshot],
     history_by_netuid: dict[int, list[SubnetSnapshot]],
@@ -233,9 +200,6 @@ def score_snapshots(
     owner_changes_by_netuid: reserved for health scoring compatibility.
     reg_cost_7d_by_netuid: reserved for health scoring compatibility.
     """
-    # Compute max followers for hype normalization
-    followers = [s.x_followers for s in snapshots if s.x_followers is not None]
-    max_followers = max(followers) if followers else 10000
     relative_value_by_netuid = compute_relative_value_scores(snapshots)
     spec421_by_netuid = compute_spec421_signals(snapshots, history_by_netuid)
 
@@ -257,9 +221,8 @@ def score_snapshots(
         snap.yield_score = relative_value.score
         snap.health_score = swing.tradability.score
         snap.momentum_score = swing.swing_score
-        # Hype is computed for display but intentionally excluded from composite —
-        # it is gameable (purchased followers, low-effort tweets) and protocol-external.
-        snap.hype_score = compute_hype_score(snap, max_followers=max_followers)
+        # hype_score is no longer computed: automated X collection was retired
+        # 2026-07-01. The column persists NULL — honest NULL over fabricated 0.
         snap.flow_score = swing.flow.score
         snap.relative_value_score = swing.relative_value.score
         snap.tradability_score = swing.tradability.score

@@ -68,7 +68,7 @@ class AlertRecord:
     subnet_name: str
     alert_type: str       # project-monitoring: 'emission_divergence' | 'dead_github' |
                           #   'emission_drop' | 'github_spike' | 'ownership_transfer' |
-                          #   'social_silence' | 'new_entry'
+                          #   'new_entry'
                           # capital-protection: 'important_buy' | 'important_sell' |
                           #   'tao_outflow' | 'whale_inflow' | 'emission_near_zero' |
                           #   'liquidity_floor' | 'hyperparameter_change'

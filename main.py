@@ -23,11 +23,9 @@ from db.database import init_db, insert_snapshot, get_latest_snapshots, \
     upsert_portfolio_position, delete_gone_positions, update_registry_category, \
     get_recent_alert_types_per_netuid, get_active_analyst_coverage_netuids, \
     get_recent_milestone_netuids, get_emergence_age_context
-from collectors.analyst import AnalystCollector
 from collectors.chain import ChainCollector, init_subtensor, close_subtensor
 from collectors.github import GitHubCollector
 from collectors.milestone import MilestoneCollector
-from collectors.x_scraper import XCollector, close_browser
 from collectors.registry import RegistryCollector
 from collectors.portfolio import PortfolioCollector
 from engine.scorer import score_snapshots
@@ -36,7 +34,6 @@ from engine.emergence import score_emergence
 from engine.alerts import (
     evaluate_alerts,
     evaluate_convergence,
-    fire_analyst_alerts,
     fire_milestone_alerts,
 )
 from bot.telegram import TelegramBot
@@ -109,24 +106,10 @@ async def poll_cycle() -> None:
                 )
             await delete_gone_positions(_db, coldkey, set(positions.keys()))
 
-    # 2. Retrieve registry and X data
+    # 2. Retrieve registry
     registry = await get_registry(_db)
-    try:
-        x_data = await asyncio.wait_for(XCollector.collect(registry), timeout=300)
-    except asyncio.TimeoutError:
-        logger.warning("[POLL] XCollector timed out after 300s — skipping X data this cycle")
-        x_data = {}
-    except Exception as exc:
-        logger.warning("[POLL] XCollector failed — skipping X data this cycle: %s", exc)
-        x_data = {}
 
-    # Merge X data into chain snapshots
-    for snap in chain_snapshots:
-        if snap.netuid in x_data:
-            snap.x_followers = x_data[snap.netuid].get("x_followers")
-            snap.x_last_tweet = x_data[snap.netuid].get("x_last_tweet")
-
-    # Also carry forward GitHub data from previous snapshot (if available)
+    # Carry forward GitHub data from previous snapshot (if available)
     for snap in chain_snapshots:
         prev = prev_by_netuid.get(snap.netuid)
         if prev and snap.gh_last_push is None:
@@ -269,14 +252,6 @@ async def github_collect() -> None:
     logger.info("[COLLECTOR] github_refresh complete subnets=%d", len(gh_data))
 
 
-async def analyst_collect() -> None:
-    """60-min analyst X handle scrape. Inserts new mentions and fires alerts."""
-    registry = await get_registry(_db)
-    await AnalystCollector.collect(_db, registry)
-    new_alerts = await fire_analyst_alerts(_db, registry)
-    logger.info("[COLLECTOR] analyst_collect done new_alerts=%d", len(new_alerts))
-
-
 async def milestone_collect() -> None:
     """6-hour milestone poll (arXiv + HuggingFace). Inserts new milestones and fires alerts."""
     registry = await get_registry(_db)
@@ -325,10 +300,6 @@ async def main() -> None:
         max_instances=1, id="github"
     )
     scheduler.add_job(
-        analyst_collect, "interval", minutes=60,
-        max_instances=1, id="analyst"
-    )
-    scheduler.add_job(
         milestone_collect, "interval", hours=6,
         max_instances=1, id="milestone"
     )
@@ -356,7 +327,6 @@ async def main() -> None:
     finally:
         scheduler.shutdown()
         await close_subtensor()
-        await close_browser()
         if _db:
             await _db.close()
 

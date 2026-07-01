@@ -60,21 +60,6 @@ async def test_github_collect_updates_snapshot_and_category(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_analyst_collect_runs_collector_and_alerts(monkeypatch):
-    main = load_main_with_env(monkeypatch)
-    main._db = AsyncMock()
-    main._telegram = None
-
-    with patch.object(main, "get_registry", AsyncMock(return_value={3: {"name": "Templar"}})), \
-            patch.object(main.AnalystCollector, "collect", AsyncMock(return_value=1)) as collect_mock, \
-            patch.object(main, "fire_analyst_alerts", AsyncMock(return_value=[])) as fire_mock:
-        await main.analyst_collect()
-
-    collect_mock.assert_awaited_once_with(main._db, {3: {"name": "Templar"}})
-    fire_mock.assert_awaited_once_with(main._db, {3: {"name": "Templar"}})
-
-
-@pytest.mark.asyncio
 async def test_poll_cycle_calls_evaluate_convergence(monkeypatch):
     main = load_main_with_env(monkeypatch)
     main._db = AsyncMock()
@@ -84,7 +69,6 @@ async def test_poll_cycle_calls_evaluate_convergence(monkeypatch):
 
     with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[])), \
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
-            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "score_snapshots", MagicMock()), \
@@ -128,7 +112,6 @@ async def test_poll_cycle_uses_latest_db_prices_for_portfolio_when_chain_empty(m
             patch.object(main, "upsert_portfolio_position", AsyncMock()) as upsert_mock, \
             patch.object(main, "delete_gone_positions", AsyncMock()), \
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
-            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[latest_row])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "score_snapshots", MagicMock()), \
@@ -156,7 +139,6 @@ async def test_poll_cycle_does_not_overwrite_portfolio_when_price_unknown(monkey
             patch.object(main, "upsert_portfolio_position", AsyncMock()) as upsert_mock, \
             patch.object(main, "delete_gone_positions", AsyncMock()) as delete_mock, \
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
-            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "score_snapshots", MagicMock()), \
@@ -203,7 +185,6 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
 
     with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
-            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[hist_row])), \
             patch.object(main, "get_recent_alert_types_per_netuid", recent_alert_types_mock), \
@@ -252,7 +233,6 @@ async def test_poll_cycle_passes_historical_alpha_price_to_scoring(monkeypatch):
 
     with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
-            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[hist_row])), \
             patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
@@ -292,7 +272,6 @@ async def test_poll_cycle_scores_emergence_before_swing_scoring(monkeypatch):
 
     with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
-            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
@@ -342,7 +321,6 @@ async def test_poll_cycle_preserves_previous_price_for_alert_context(monkeypatch
 
     with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
-            patch.object(main.XCollector, "collect", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[previous_row])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
             patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \

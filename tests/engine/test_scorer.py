@@ -6,7 +6,6 @@ from engine.scorer import (
     compute_yield_scores,
     compute_health_score,
     compute_momentum_score,
-    compute_hype_score,
     score_snapshots,
 )
 
@@ -240,20 +239,15 @@ def test_score_snapshots_weight_renormalization():
     assert snap.composite_score == pytest.approx(snap.yield_score, rel=0.01)
 
 
-def test_hype_score_not_included_in_composite():
-    """Hype is computed for display but must not affect composite score."""
+def test_hype_score_stays_none():
+    """Automated X collection is retired: hype_score must never be computed."""
     now = datetime.now(timezone.utc)
-    base = make_snap(1, daily_emission_tao=50.0, alpha_mcap_usd=5_000_000,
+    snap = make_snap(1, daily_emission_tao=50.0, alpha_mcap_usd=5_000_000,
                      tao_usd_price=300.0,
-                     gh_last_push=now - timedelta(days=5))
-    with_hype = make_snap(1, daily_emission_tao=50.0, alpha_mcap_usd=5_000_000,
-                          tao_usd_price=300.0,
-                          gh_last_push=now - timedelta(days=5),
-                          x_followers=50000, x_last_tweet=now - timedelta(days=1))
-    score_snapshots([base], history_by_netuid={})
-    score_snapshots([with_hype], history_by_netuid={})
-    assert with_hype.hype_score is not None
-    assert base.composite_score == pytest.approx(with_hype.composite_score, rel=0.01)
+                     gh_last_push=now - timedelta(days=5),
+                     x_followers=50000, x_last_tweet=now - timedelta(days=1))
+    score_snapshots([snap], history_by_netuid={})
+    assert snap.hype_score is None
 
 
 def test_score_snapshots_forwards_alert_context_to_swing():
@@ -440,39 +434,6 @@ def test_score_snapshots_continues_when_spec421_signal_missing(monkeypatch):
     assert snap.tradability_score is not None
     assert snap.swing_score is not None
     assert snap.composite_score == snap.swing_score
-
-
-# ── Hype score ────────────────────────────────────────────────────────────────
-
-def test_hype_score_none_without_social_data():
-    snap = make_snap(1)
-    assert compute_hype_score(snap) is None
-
-
-def test_hype_score_followers_only():
-    snap = make_snap(1, x_followers=5000)
-    score = compute_hype_score(snap, max_followers=10000)
-    assert score == pytest.approx(30.0)  # 5000/10000 * 60 = 30
-
-
-def test_hype_score_recent_tweet_bonus():
-    now = datetime.now(timezone.utc)
-    snap = make_snap(1, x_followers=0, x_last_tweet=now - timedelta(days=1))
-    score = compute_hype_score(snap, max_followers=10000)
-    assert score == pytest.approx(40.0)  # 0 followers + <3d tweet = 40
-
-
-def test_hype_score_capped_at_100():
-    now = datetime.now(timezone.utc)
-    snap = make_snap(1, x_followers=10000, x_last_tweet=now - timedelta(days=1))
-    score = compute_hype_score(snap, max_followers=10000)
-    assert score == pytest.approx(100.0)  # 60 + 40 = 100
-
-
-def test_hype_score_stale_tweet_no_bonus():
-    snap = make_snap(1, x_followers=1000, x_last_tweet=datetime.now(timezone.utc) - timedelta(days=60))
-    score = compute_hype_score(snap, max_followers=10000)
-    assert score == pytest.approx(6.0)   # 1000/10000 * 60 = 6, tweet >30d = 0
 
 
 def test_score_snapshots_composite_is_swing_score_from_flow_value_and_tradability():
