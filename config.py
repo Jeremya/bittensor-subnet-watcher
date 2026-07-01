@@ -51,6 +51,9 @@ FLOW_IMPULSE_BUY_PCT: float = 0.05          # net inflow >= 5% of pool in one po
 FLOW_IMPULSE_SELL_PCT: float = 0.03         # net outflow >= 3% of pool in one poll
 FLOW_IMPULSE_MIN_MCAP_USD: float = 50_000.0 # suppress tiny USD market caps when known
 FLOW_IMPULSE_COOLDOWN_HOURS: int = 2        # direction-specific flow impulse cooldown
+# Chronic-condition state machine (hysteresis)
+CONDITION_ENTER_POLLS: int = 2              # consecutive breached polls before 'entered' fires
+CONDITION_CLEAR_POLLS: int = 4              # consecutive clear polls before 'recovered' fires
 # Shared
 ALERT_COOLDOWN_HOURS: int = 6               # max 1 alert per subnet per type per 6h
 HEALTH_CHECK_NONE_THRESHOLD: float = 0.50   # warn if >50% subnets have None emission

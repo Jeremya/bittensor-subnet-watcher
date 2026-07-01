@@ -133,11 +133,26 @@ CREATE TABLE IF NOT EXISTS collector_state (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS condition_states (
+    netuid          INTEGER NOT NULL,   -- -1 sentinel rows = collector health, not a subnet
+    condition       TEXT NOT NULL,      -- e.g. 'emission_near_zero', 'collector_stale_github'
+    status          TEXT NOT NULL,      -- 'pending' | 'active' | 'cleared'
+    first_breach_at TEXT NOT NULL,
+    entered_at      TEXT,
+    cleared_at      TEXT,
+    breach_streak   INTEGER NOT NULL DEFAULT 1,
+    clear_streak    INTEGER NOT NULL DEFAULT 0,
+    last_value      REAL,
+    updated_at      TEXT NOT NULL,
+    PRIMARY KEY (netuid, condition, first_breach_at)
+);
+
 CREATE INDEX IF NOT EXISTS idx_snapshots_netuid_time ON snapshots (netuid, polled_at);
 CREATE INDEX IF NOT EXISTS idx_alerts_fired_at ON alerts (fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_dedup ON alerts (netuid, alert_type, fired_at);
 CREATE INDEX IF NOT EXISTS idx_analyst_mentions_netuid ON analyst_mentions (netuid, mentioned_at);
 CREATE INDEX IF NOT EXISTS idx_milestones_netuid ON subnet_milestones (netuid, published_at);
+CREATE INDEX IF NOT EXISTS idx_condition_states_live ON condition_states (netuid, condition, status);
 """
 
 
