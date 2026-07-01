@@ -25,18 +25,39 @@ Decision (user-confirmed): fix trust before building new capability. Registry
 backfill (20 missing `github_url`, 22 missing `category`) and the ~21% slippage
 null-rate investigation are **deferred** — record both in `TODOS.md`.
 
-## Workstream 1: Cut the X pipeline cleanly
+## Workstream 1: Cut X scraping; replace with manual tweet curation
 
-- Remove `XCollector` scheduling from `main.py`; delete `collectors/x_scraper.py`.
-- `collectors/analyst.py` stops polling. The analyst dashboard tab remains but shows
-  a "dormant: no data source" state instead of silently-empty feeds.
+Root cause found 2026-07-01: the subnet scraper never ran (all 129 registry
+`x_handle` values are empty, so its work list was always empty) and the analyst
+scraper hit X's anonymous login wall, returning empty results silently. Decision:
+scraping is not worth maintaining; the user curates important tweets by hand.
+
+### Remove scraping
+
+- Remove `XCollector` scheduling from `main.py`; delete `collectors/x_scraper.py`
+  and the Playwright scraping paths in `collectors/analyst.py`.
 - `compute_hype_score` (`engine/scorer.py`) is removed from composite/swing
   weighting; `hype_score` is no longer written (column retained for history —
   honest NULL beats fabricated 0). The `social_silence` alert check is removed.
-- Schema unchanged: `x_last_tweet`, `x_followers`, `analyst_mentions`,
-  `analyst_watchlist` stay dormant. Re-enabling later (e.g. paid X API) is additive.
-- New config flag `X_PIPELINE_ENABLED = False` guards the analyst engine wiring
-  rather than deleting tested code whose only defect is a dead data source.
+- `x_last_tweet` / `x_followers` snapshot columns stay dormant. Re-enabling
+  automated collection later (e.g. paid X API) is additive.
+
+### Manual tweet curation (new source for the existing analyst pipeline)
+
+- Add form on each subnet detail page, plus a quick-add on `/analysts`: paste a
+  tweet URL + optional tweet text/note. Handle is parsed from the URL
+  (`x.com/{handle}/status/…`); `mentioned_at` is set to submission time.
+- Rows insert into the existing `analyst_mentions` table; its
+  `UNIQUE(analyst_handle, netuid, tweet_url)` constraint provides dedup.
+- Downstream pipeline is untouched and picks manual rows up automatically:
+  subnet-page mention feed, `catalyst_score` "fresh analyst coverage" boost, and
+  the convergence signal, all with the existing 72h decay. (User-confirmed:
+  curated tweets SHOULD feed signals — a tweet worth saving is a real catalyst.)
+- Manual rows are inserted with `notified = 1` so Telegram does not echo back
+  what the user just typed.
+- The `/analysts` page repurposes from "scraper watchlist" to "curated tweet
+  log"; `analyst_watchlist` rows stay stored but no longer imply automated
+  collection.
 
 ## Workstream 2: Alert state machine + daily digest
 
@@ -120,14 +141,17 @@ to tens/week.
 - Digest formatting golden tests.
 - Health endpoint tested against a fixture DB containing a deliberately stale
   collector and a high null-rate field.
-- X-cut verified by: scorer tests updated (no hype in weights), monitor boots with
-  `X_PIPELINE_ENABLED=False`, analyst tab renders dormant state.
+- X-cut verified by: scorer tests updated (no hype in weights), monitor boots
+  cleanly with the scraper removed.
+- Manual tweet curation: URL-parsing tests (handle extraction, malformed URLs,
+  non-tweet URLs rejected), dedup on double-submit, catalyst/convergence pickup
+  of a manually added mention, `notified=1` suppresses Telegram.
 
 ## Rollout
 
 Each workstream is an independent PR, landed in order:
 
-1. X cut
+1. X cut + manual tweet curation
 2. Condition state machine
 3. Daily digest
 4. Health panel (depends on 2 for `collector_stale`)
