@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 import bittensor as bt
+from bittensor.core.chain_data.dynamic_info import DynamicInfo
 from models import SubnetSnapshot
 from utils import aiohttp_session
 import config
@@ -12,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 # Singleton — initialized by main.py at startup
 _subtensor: Optional[bt.AsyncSubtensor] = None
+
+_ALPHA_SQRT_PRICE_STORAGE = 'Swap.AlphaSqrtPrice'
 
 
 async def init_subtensor() -> None:
@@ -42,6 +45,55 @@ async def fetch_tao_usd_price() -> Optional[float]:
         return None
 
 
+def _is_missing_alpha_sqrt_price_storage(exc: Exception) -> bool:
+    message = str(exc)
+    return _ALPHA_SQRT_PRICE_STORAGE in message and "not found" in message
+
+
+async def _all_subnets_without_bulk_prices() -> list[object]:
+    """Fetch dynamic subnet info without Bittensor's Swap.AlphaSqrtPrice query_map."""
+    if _subtensor is None:
+        return []
+
+    block_hash = await _subtensor.determine_block_hash(
+        block=None,
+        block_hash=None,
+        reuse_block=False,
+    )
+    query = await _subtensor.substrate.runtime_call(
+        api="SubnetInfoRuntimeApi",
+        method="get_all_dynamic_info",
+        block_hash=block_hash,
+    )
+    dynamic_list = DynamicInfo.list_from_dicts(query.decode())
+    await _hydrate_dynamic_prices(dynamic_list)
+    return dynamic_list
+
+
+async def _hydrate_dynamic_prices(dynamic_list: list[object]) -> None:
+    if _subtensor is None:
+        return
+
+    semaphore = asyncio.Semaphore(16)
+
+    async def hydrate_one(dyn: object) -> None:
+        netuid = getattr(dyn, "netuid", None)
+        if netuid is None:
+            return
+
+        try:
+            async with semaphore:
+                dyn.price = await _subtensor.get_subnet_price(netuid)
+        except Exception as exc:
+            logger.debug(
+                "[COLLECTOR] fallback_subnet_price_failed netuid=%s error=%s",
+                netuid,
+                exc,
+            )
+
+    await asyncio.gather(*(hydrate_one(dyn) for dyn in dynamic_list))
+
+
 class ChainCollector:
     @staticmethod
     async def collect() -> list[SubnetSnapshot]:
@@ -53,15 +105,41 @@ class ChainCollector:
             logger.error("[COLLECTOR] chain: subtensor not initialized")
             return []
 
-        try:
-            dynamic_list, info_list, tao_usd = await asyncio.gather(
-                _subtensor.all_subnets(),
-                _subtensor.get_all_subnets_info(),
-                fetch_tao_usd_price(),
-            )
-        except Exception as exc:
-            logger.error("[COLLECTOR] chain_collect_failed error=%s", exc)
-            return []
+        dynamic_result, info_result, tao_usd_result = await asyncio.gather(
+            _subtensor.all_subnets(),
+            _subtensor.get_all_subnets_info(),
+            fetch_tao_usd_price(),
+            return_exceptions=True,
+        )
+
+        if isinstance(dynamic_result, Exception):
+            if _is_missing_alpha_sqrt_price_storage(dynamic_result):
+                logger.warning(
+                    "[COLLECTOR] chain_bulk_price_storage_missing fallback=dynamic_runtime_api error=%s",
+                    dynamic_result,
+                )
+                try:
+                    dynamic_list = await _all_subnets_without_bulk_prices()
+                except Exception as exc:
+                    logger.error("[COLLECTOR] chain_dynamic_fallback_failed error=%s", exc)
+                    return []
+            else:
+                logger.error("[COLLECTOR] chain_collect_failed error=%s", dynamic_result)
+                return []
+        else:
+            dynamic_list = dynamic_result
+
+        if isinstance(info_result, Exception):
+            logger.warning("[COLLECTOR] chain_subnet_info_failed error=%s", info_result)
+            info_list = []
+        else:
+            info_list = info_result
+
+        if isinstance(tao_usd_result, Exception):
+            logger.warning("[COLLECTOR] tao_usd_price_failed error=%s", tao_usd_result)
+            tao_usd = None
+        else:
+            tao_usd = tao_usd_result
 
         # Build lookup by netuid
         info_by_netuid: dict[int, object] = {i.netuid: i for i in (info_list or [])}

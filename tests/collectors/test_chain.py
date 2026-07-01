@@ -31,6 +31,12 @@ def make_subnet_info(netuid: int, n: int = 256, burn_tao: float = 0.001) -> Magi
     return m
 
 
+def make_balance(tao: float) -> MagicMock:
+    m = MagicMock()
+    m.tao = tao
+    return m
+
+
 @pytest.fixture
 def mock_subtensor():
     with patch("collectors.chain._subtensor") as mock_sub:
@@ -69,6 +75,48 @@ async def test_collect_handles_subtensor_exception():
         with patch("collectors.chain.fetch_tao_usd_price", AsyncMock(return_value=300.0)):
             snapshots = await ChainCollector.collect()
     assert snapshots == []
+
+
+async def test_collect_recovers_from_missing_alpha_sqrt_price_storage():
+    fallback_dynamic = [
+        make_dynamic_info(1),
+        make_dynamic_info(64, price_tao=0.086, tao_in=216000.0),
+    ]
+    query = MagicMock()
+    query.decode.return_value = [{"netuid": 1}, {"netuid": 64}]
+
+    with patch("collectors.chain._subtensor") as mock_sub:
+        mock_sub.all_subnets = AsyncMock(
+            side_effect=ValueError('Storage function "Swap.AlphaSqrtPrice" not found')
+        )
+        mock_sub.get_all_subnets_info = AsyncMock(return_value=[
+            make_subnet_info(1), make_subnet_info(64)
+        ])
+        mock_sub.determine_block_hash = AsyncMock(return_value="0xabc")
+        mock_sub.substrate.runtime_call = AsyncMock(return_value=query)
+        mock_sub.get_subnet_price = AsyncMock(side_effect=lambda netuid: make_balance({
+            1: 0.0125,
+            64: 0.075,
+        }[netuid]))
+
+        with (
+            patch("collectors.chain.DynamicInfo", create=True) as mock_dynamic_cls,
+            patch("collectors.chain.fetch_tao_usd_price", AsyncMock(return_value=300.0)),
+        ):
+            mock_dynamic_cls.list_from_dicts.return_value = fallback_dynamic
+            snapshots = await ChainCollector.collect()
+
+    assert len(snapshots) == 2
+    assert {s.netuid for s in snapshots} == {1, 64}
+    assert next(s for s in snapshots if s.netuid == 1).alpha_price_tao == pytest.approx(0.0125)
+    assert next(s for s in snapshots if s.netuid == 64).alpha_price_tao == pytest.approx(0.075)
+    mock_sub.get_subnet_price.assert_any_await(1)
+    mock_sub.get_subnet_price.assert_any_await(64)
+    mock_sub.substrate.runtime_call.assert_awaited_once_with(
+        api="SubnetInfoRuntimeApi",
+        method="get_all_dynamic_info",
+        block_hash="0xabc",
+    )
 
 
 async def test_fetch_tao_usd_price_happy_path():
