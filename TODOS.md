@@ -12,8 +12,24 @@ panel (`/api/health`) + `collector_stale` alerts. Backups only on schema change;
 ### Deferred from trust phase
 - **Registry backfill** — 20 subnets missing `github_url`, 22 missing `category`
   (limits dead_github coverage + category views). Effort: S, mostly data entry.
-- **Slippage null investigation** — ~21% of recent snapshot rows missing
-  `buy_slippage_pct`/`sell_slippage_pct`; feeds tradability_score which gates buys.
+- ✅ **Slippage null investigation — DONE (2026-07-02).** Root cause: under the
+  pre-Spec-421 SDK bulk path, slippage computation failed deterministically for a
+  fixed set of 47 subnets (100% null Jun 15–25, ~30% of rows) while price/volume/
+  reserves were fine. The chain's runtime upgrade (~Jun 26) removed
+  `Swap.AlphaSqrtPrice`, causing a 5-day full outage (Jun 26–30, no snapshots);
+  the Jul 1 fallback fix (74f0147) also healed slippage — 0.1% nulls since, all
+  47 subnets clean. Scores degraded gracefully in the bad window (tradability
+  avg 94.2 vs 99.6; swing_score always present). No further code fix needed.
+
+### New follow-ups (from 2026-07-02 investigation)
+- **SDK upgrade to silence per-cycle fallback** — bittensor 10.2.0 predates the
+  chain's Swap pallet change, so every poll logs
+  `chain_bulk_price_storage_missing` and makes 129 extra `get_subnet_price` RPC
+  calls. Upgrade bittensor when a release supports the new storage, then remove
+  the fallback warning noise. Effort: S–M (SDK upgrades need regression testing).
+- **Calibration window caveat** — the Jun 26–30 outage means a contiguous clean
+  30-day swing history lands ~Jul 31, not Jul 15. A Jul 15 run can still include
+  Jun 15–25 (swing_score fully populated) with the 47-subnet tradability caveat.
 
 ## P0 — Calibration Gate (active)
 
