@@ -47,7 +47,7 @@ async def test_digest_renders_sentinel_as_collector_health(tmp_path):
         await db.close()
 
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from db.database import insert_snapshot
 from models import SubnetSnapshot
