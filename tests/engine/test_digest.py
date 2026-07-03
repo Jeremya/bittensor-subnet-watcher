@@ -45,3 +45,39 @@ async def test_digest_renders_sentinel_as_collector_health(tmp_path):
         assert "SN-1" not in text
     finally:
         await db.close()
+
+
+from datetime import timedelta
+
+from db.database import insert_snapshot
+from models import SubnetSnapshot
+
+
+@pytest.mark.asyncio
+async def test_digest_includes_tide_line(tmp_path):
+    db = await init_db(str(tmp_path / "t.db"))
+    try:
+        now = datetime.now(timezone.utc)
+        for netuid, flow in ((1, 300.0), (2, -100.0)):
+            await insert_snapshot(db, SubnetSnapshot(
+                netuid=netuid, polled_at=now - timedelta(hours=1),
+                net_tao_flow_tao=flow))
+        text = await build_daily_digest(db, registry={})
+        assert "Tide" in text and "+200" in text
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_digest_includes_ignition_scorecard_when_alerts_exist(tmp_path):
+    db = await init_db(str(tmp_path / "t.db"))
+    try:
+        await db.execute(
+            "INSERT INTO alerts (fired_at, netuid, subnet_name, alert_type, description)"
+            " VALUES (?, 7, 'X', 'pump_ignition', 'd')",
+            (datetime.now(timezone.utc).isoformat(),))
+        await db.commit()
+        text = await build_daily_digest(db, registry={})
+        assert "Ignition" in text
+    finally:
+        await db.close()

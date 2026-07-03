@@ -39,6 +39,33 @@ async def build_daily_digest(db: aiosqlite.Connection,
 
     lines = [f"📋 TAO Monitor digest — {now.strftime('%Y-%m-%d %H:%M UTC')}"]
 
+    cursor = await db.execute(
+        """SELECT SUM(net_tao_flow_tao) FROM snapshots
+           WHERE datetime(polled_at) > datetime('now', '-24 hours')""")
+    row = await cursor.fetchone()
+    tide = row[0] if row and row[0] is not None else None
+    if tide is not None:
+        direction = "flowing in" if tide >= 0 else "flowing out"
+        lines.append(f"🌊 Tide: {tide:+,.0f} τ {direction} (24h, all subnets)")
+
+    cursor = await db.execute(
+        """SELECT COUNT(*) FROM alerts
+           WHERE alert_type='pump_ignition' AND netuid != -1
+             AND datetime(fired_at) > datetime('now', '-30 days')""")
+    fired_30d = (await cursor.fetchone())[0]
+    if fired_30d:
+        cursor = await db.execute(
+            """SELECT COUNT(*) FROM alerts a
+               WHERE a.alert_type='pump_ignition' AND a.netuid != -1
+                 AND datetime(a.fired_at) > datetime('now', '-30 days')
+                 AND EXISTS (
+                     SELECT 1 FROM pump_events p
+                     WHERE p.netuid = a.netuid
+                       AND datetime(a.fired_at) BETWEEN datetime(p.start_at)
+                           AND datetime(p.start_at, '+6 hours'))""")
+        hits = (await cursor.fetchone())[0]
+        lines.append(f"🔥 Ignition 30d: {fired_30d} fired, {hits} hit")
+
     if collector_rows:
         lines.append("\n🩺 Collector health:")
         for row in collector_rows:
