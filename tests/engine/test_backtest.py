@@ -72,3 +72,21 @@ def test_backtest_returns_json_friendly_structure():
     assert report["row_count"] == 0
     assert report["anchor_count"] == 0
     assert set(report["buckets"]) == {"<50", "50-60", "60-70", "70-80", "80+"}
+
+
+def test_backtest_skips_forward_matches_beyond_tolerance():
+    """A data gap must not silently stretch the horizon: if the first snapshot
+    at/after the 7d target is days late (e.g. the Jun 26-30 outage), that
+    anchor contributes no 7d sample. An on-time 14d match still counts."""
+    rows = [
+        make_snap(1, days_ago=14, swing_score=85.0, alpha_price_tao=1.0),
+        # gap: nothing between day-14 and day-2 → "7d" match would be 5 days late
+        make_snap(1, days_ago=2, alpha_price_tao=1.2),
+        make_snap(1, days_ago=0, alpha_price_tao=1.5),  # exactly 14d later: on time
+    ]
+
+    report = run_backtest(rows)
+
+    assert report["buckets"]["80+"]["forward_7d"]["samples"] == 0
+    assert report["buckets"]["80+"]["forward_14d"]["samples"] == 1
+    assert report["buckets"]["80+"]["forward_14d"]["mean_return"] == pytest.approx(0.5)

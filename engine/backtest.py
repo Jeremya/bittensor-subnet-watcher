@@ -92,6 +92,7 @@ def run_backtest(
     rows: Iterable[SubnetSnapshot | Mapping[str, Any]],
     *,
     horizons_hours: tuple[int, int] = (168, 336),
+    max_lag_hours: int = 24,
 ) -> dict[str, Any]:
     snapshots = [_as_snapshot(row) for row in rows]
     series_by_netuid: dict[int, list[SubnetSnapshot]] = defaultdict(list)
@@ -121,6 +122,10 @@ def run_backtest(
                     None,
                 )
                 if future is None:
+                    continue
+                # A data gap must not silently stretch the horizon: a "7d"
+                # return measured 12 days later is not a 7d return.
+                if future.polled_at > target + timedelta(hours=max_lag_hours):
                     continue
                 ret = _forward_return(anchor, future)
                 if ret is None:
