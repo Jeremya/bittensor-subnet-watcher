@@ -1,5 +1,50 @@
 # TODOS
 
+## P1 — Pump Radar (CEO review 2026-07-03, EXPANSION mode)
+
+**Evidence that reframed the roadmap:** 15 pump events (≥1.5x in 3d, up to 6.3x)
+recorded Jun 15–Jul 3. ZERO had emergence_score ≥ 70 at pump start; 2/15 had
+swing ≥ 75; catalyst NULL on all 15; prior-24h flows ±3% of pool, volume flat.
+On-chain levels do NOT lead pumps. 8/15 started Jun 17–18 (market-wide tide).
+Strategy: detect ignition in minutes + know the tide + see catalysts — don't predict.
+
+### Phase 1 (approved, next build): Pump-event registry + ignition detector
+- `engine/pump_events.py` — pure detection over snapshot series → `pump_events`
+  table (start/peak/retrace); hourly job; idempotent; owner-change resets;
+  skip events whose pre-window spans a data gap; min-mcap floor.
+- `scripts/signal_leadlag.py` — samples every signal at T-24h…T0 per event;
+  hit-rate + lead-time per signal; grades ignition alerts hit/late/false.
+- `engine/ignition.py` — price impulse + volume expansion + flow surge in 1–2
+  polls → `pump_ignition` ACUTE alert. **Must gate on prev-poll age ≤ 2× poll
+  interval** (first poll after outage = fake impulse — same bug class as the
+  backtest horizon fix). Tune thresholds on the 15 recorded events.
+- Scope also includes (user-approved): neutral-50 → NULL score audit (no fake
+  50s feeding the harness), 🌊 tide line in daily digest, runway-enriched
+  ignition alerts (slippage at size + median pump peak/duration from registry),
+  `/pumps` dashboard page, pump-record block on subnet detail pages.
+
+### Phase 2 (queued): Regime & rotation — P2
+Aggregate net-TAO-flow tide dial + per-subnet relative-strength ranking when
+risk turns on. 8/15 pumps were one market event. Existing data; one engine
+module + dashboard banner. Judged by the lead/lag harness from day one. Effort: M.
+
+### Phase 3 (queued): Catalyst feeds — P2
+Automated collectors from durable sources feeding the existing catalyst/
+convergence pipeline: GitHub releases/tags first (API already integrated),
+then project blog/site RSS, taostats/exchange listing announcements. The pumps
+were news-driven; our catalyst inputs are near-empty. Effort: M–L.
+
+### Phase 4 (queued): Whale fingerprints — P3
+First step is a 1-hour spike: test per-subnet staker enumeration on SDK 10.5
+(supersedes the old blocked whale-inflow design below). If feasible: staker-
+delta collection → wallet→pump-lead history from the registry → alert when a
+repeat pre-pump wallet enters. Only signal class that can LEAD news-driven
+pumps. Effort: L–XL, hypothesis until the harness grades it.
+
+### Small (queued): Telegram deep links
+`DASHBOARD_PUBLIC_URL` config + per-alert link to /subnet/{netuid}. Queue with
+the decision on remote dashboard access (Tailscale?) — localhost-only until then.
+
 ## ✅ Trust Phase — DONE (2026-07-01)
 Spec: `docs/superpowers/specs/2026-07-01-trust-phase-design.md`.
 X scraping removed (never produced data) → manual tweet curation on subnet pages +
