@@ -57,17 +57,13 @@ if buckets separate. Do NOT tune off the legacy-composite single-window result.
 
 ---
 
-### Spec 421 scoring refactor
-**What:** Refactor swing scoring around price-based emissions after Spec 421.
-Flow remains a demand signal; price EMA and price-based emission value become
-the protocol thesis inputs.
-
-**Why:** The old flow-based emission-share thesis is deprecated on mainnet.
-
-**Where to start:** `engine/spec421.py`, then `engine/scorer.py` and persisted
-snapshot fields.
-
-**Priority:** P0
+### ✅ Spec 421 scoring refactor — DONE (late June, entry never checked off)
+Shipped across the spec-421 commit chain ending c56cbe3. `engine/spec421.py`
+computes price EMA + price-based emission value + protocol context;
+`compute_swing_signal` weights spec421 at 0.40 (flow demoted to 0.20 demand
+signal, tradability 0.25, catalyst 0.15). All four spec421 columns persisted
+and 100% populated since 2026-06-15 — validated by the 2026-07-03 backtest
+dry run.
 
 ---
 
