@@ -119,3 +119,79 @@ def detect_pump_events(series: list[SubnetSnapshot]) -> list[PumpEvent]:
     if active is not None:
         events.append(active)
     return events
+
+
+async def upsert_pump_event(db: aiosqlite.Connection, ev: PumpEvent) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    await db.execute(
+        """
+        INSERT INTO pump_events
+            (netuid, start_at, peak_at, end_at, start_price, peak_price,
+             end_price, ratio, retrace_pct, status, start_mcap_usd, detected_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(netuid, start_at) DO UPDATE SET
+            peak_at=excluded.peak_at, end_at=excluded.end_at,
+            peak_price=excluded.peak_price, end_price=excluded.end_price,
+            ratio=excluded.ratio, retrace_pct=excluded.retrace_pct,
+            status=excluded.status
+        """,
+        (ev.netuid, ev.start_at.isoformat(),
+         ev.peak_at.isoformat(),
+         ev.end_at.isoformat() if ev.end_at else None,
+         ev.start_price, ev.peak_price, ev.end_price,
+         round(ev.ratio, 4),
+         round(ev.retrace_pct, 4) if ev.retrace_pct is not None else None,
+         ev.status, ev.start_mcap_usd, now),
+    )
+    await db.commit()
+
+
+def _row_to_snapshot(row) -> SubnetSnapshot:
+    return SubnetSnapshot(
+        netuid=row["netuid"],
+        polled_at=datetime.fromisoformat(row["polled_at"]),
+        alpha_price_tao=row["alpha_price_tao"],
+        alpha_mcap_usd=row["alpha_mcap_usd"],
+        owner_coldkey=row["owner_coldkey"],
+    )
+
+
+async def scan_and_store(db: aiosqlite.Connection, since_days: int = 7) -> int:
+    """Detect and upsert pump events over the trailing window. Returns event count."""
+    cursor = await db.execute(
+        """
+        SELECT netuid, polled_at, alpha_price_tao, alpha_mcap_usd, owner_coldkey
+        FROM snapshots
+        WHERE datetime(polled_at) > datetime('now', ?)
+        ORDER BY netuid, polled_at
+        """,
+        (f"-{since_days} days",),
+    )
+    rows = await cursor.fetchall()
+    by_netuid: dict[int, list[SubnetSnapshot]] = {}
+    for row in rows:
+        by_netuid.setdefault(row["netuid"], []).append(_row_to_snapshot(row))
+
+    count = 0
+    for series in by_netuid.values():
+        for ev in detect_pump_events(series):
+            await upsert_pump_event(db, ev)
+            count += 1
+    return count
+
+
+async def get_recent_pump_events(db: aiosqlite.Connection,
+                                 limit: int = 100) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        "SELECT * FROM pump_events ORDER BY start_at DESC LIMIT ?", (limit,)
+    )
+    return await cursor.fetchall()
+
+
+async def get_pump_events_for_netuid(db: aiosqlite.Connection, netuid: int,
+                                     limit: int = 10) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        "SELECT * FROM pump_events WHERE netuid=? ORDER BY start_at DESC LIMIT ?",
+        (netuid, limit),
+    )
+    return await cursor.fetchall()

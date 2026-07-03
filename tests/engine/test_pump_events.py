@@ -80,3 +80,25 @@ def test_start_is_latest_minimum_on_flat_stretch():
     events = detect_pump_events(series(prices))
     assert len(events) == 1
     assert events[0].start_at == T0 + timedelta(minutes=15 * 7)
+
+
+from db.database import init_db, insert_snapshot
+from engine.pump_events import scan_and_store, get_recent_pump_events
+
+
+@pytest.mark.asyncio
+async def test_scan_and_store_persists_and_is_idempotent(tmp_path):
+    db = await init_db(str(tmp_path / "t.db"))
+    try:
+        for s in series([1.0, 1.6, 2.0, 1.4]):
+            await insert_snapshot(db, s)
+        n1 = await scan_and_store(db, since_days=7)
+        n2 = await scan_and_store(db, since_days=7)
+        assert n1 == 1 and n2 == 1
+        rows = await get_recent_pump_events(db, limit=10)
+        assert len(rows) == 1                      # idempotent, no duplicate
+        assert rows[0]["status"] == "closed"
+        assert rows[0]["ratio"] == pytest.approx(2.0)
+        assert rows[0]["retrace_pct"] == pytest.approx(0.6)
+    finally:
+        await db.close()

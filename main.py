@@ -274,6 +274,13 @@ async def milestone_collect() -> None:
     logger.info("[COLLECTOR] milestone_collect done new_alerts=%d", len(new_alerts))
 
 
+async def pump_scan() -> None:
+    """Hourly: detect/refresh pump events over the trailing week."""
+    from engine.pump_events import scan_and_store
+    count = await scan_and_store(_db, since_days=7)
+    logger.info("[PUMP_SCAN] events_upserted=%d", count)
+
+
 async def daily_digest() -> None:
     """08:00 local: one-message summary of active conditions + collector health."""
     from engine.digest import build_daily_digest
@@ -334,6 +341,10 @@ async def main() -> None:
     scheduler.add_job(
         daily_digest, "cron", hour=config.DIGEST_HOUR_LOCAL, minute=0,
         max_instances=1, id="digest"
+    )
+    scheduler.add_job(
+        pump_scan, "interval", hours=1,
+        max_instances=1, id="pump_scan"
     )
     scheduler.start()
 
