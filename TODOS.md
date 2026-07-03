@@ -41,6 +41,18 @@ delta collection → wallet→pump-lead history from the registry → alert when
 repeat pre-pump wallet enters. Only signal class that can LEAD news-driven
 pumps. Effort: L–XL, hypothesis until the harness grades it.
 
+### Small (queued): Locked-alpha collection — P2 (idea via @TAOTemplar, 2026-07-03)
+Daily sweep: `get_coldkey_lock(owner_coldkey, netuid)` for all 129 subnets (SDK
+10.5 verified; DynamicInfo does NOT carry it) → persist owner-locked alpha
+(τ value + % of supply + delta). Three uses, all harness-testable once data
+accrues: (1) float compression as pump-MAGNITUDE conditioner for Phase 2
+rotation ranking (MVTRX/Swarm ~50% locked = same inflow, ~2x the move);
+(2) team-conviction health signal; (3) lock-delta / approaching-unlock-cliff
+as catalyst/risk EVENTS (LockState rolls forward → expiry visible). Cannot be
+backfilled — start persisting early. Full all-staker aggregate joins the
+Phase 4 whale enumeration spike. Also: consider effective-float-adjusted
+tradability (mcap currently counts locked alpha as float).
+
 ### Small (queued): Telegram deep links
 `DASHBOARD_PUBLIC_URL` config + per-alert link to /subnet/{netuid}. Queue with
 the decision on remote dashboard access (Tailscale?) — localhost-only until then.
