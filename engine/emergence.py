@@ -16,7 +16,7 @@ class EmergenceSignal:
     reg_demand: SignalComponent
     slot_fill: SignalComponent
     flow_accel: SignalComponent
-    emergence_score: float
+    emergence_score: Optional[float]   # None = no component had data (never a fake 0)
     stage: str
     reasons: list[str]
 
@@ -183,16 +183,17 @@ def compute_emergence_signal(
     available = [(score, weight) for score, weight in weighted if score is not None]
     if available:
         total_weight = sum(weight for _, weight in available)
-        score = sum(score * weight for score, weight in available) / total_weight
+        raw = sum(score * weight for score, weight in available) / total_weight
+        emergence_score = round(_clamp(raw), 2)
     else:
-        score = 0.0
+        emergence_score = None   # no data must persist as NULL, never a fake 0.0
 
     return EmergenceSignal(
         netuid=snap.netuid,
         reg_demand=reg,
         slot_fill=slot,
         flow_accel=flow,
-        emergence_score=round(_clamp(score), 2),
+        emergence_score=emergence_score,
         stage=stage,
         reasons=reg.reasons + slot.reasons + flow.reasons,
     )

@@ -199,3 +199,10 @@ def test_score_emergence_sets_columns_in_place():
     assert snap.emergence_score is not None
     assert snap.emergence_stage in ("nascent", "accelerating")
     assert snap.reg_demand_score is not None
+
+
+def test_emergence_score_is_none_when_all_components_missing():
+    """No data must persist as NULL, never a fake 0.0 (harness honesty)."""
+    snap = SubnetSnapshot(netuid=1, polled_at=datetime.now(timezone.utc))
+    sig = compute_emergence_signal(snap, history=[], first_seen_at=None)
+    assert sig.emergence_score is None
