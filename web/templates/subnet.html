@@ -369,6 +369,17 @@
     {% endif %}
 
     <div class="card full-width" style="margin-top:16px">
+      <h3>Pump record</h3>
+      {% for ev in pump_events %}
+      <div class="alert-item">
+        <div class="alert-type">🔥 {{ "%.2f"|format(ev.ratio) }}x on {{ ev.start_at[:10] }}</div>
+        <div class="alert-desc">{{ ev.status }}{% if ev.retrace_pct is not none %} · retraced {{ "%.0f"|format(ev.retrace_pct * 100) }}%{% endif %}</div>
+      </div>
+      {% endfor %}
+      {% if not pump_events %}<div style="color:#333;font-style:italic;font-size:0.78rem;">No pump events recorded.</div>{% endif %}
+    </div>
+
+    <div class="card full-width" style="margin-top:16px">
       <h3>Analyst Mentions</h3>
       <form method="post" action="/subnet/{{ snap.netuid }}/mention" style="display:flex;gap:6px;margin:8px 0;">
         <input name="tweet_url" placeholder="https://x.com/…/status/…" required

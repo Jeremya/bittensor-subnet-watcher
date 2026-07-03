@@ -2,7 +2,7 @@
 import pytest
 import aiosqlite
 from httpx import AsyncClient, ASGITransport
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 from engine import signals
 from db.database import (
@@ -426,3 +426,28 @@ async def test_api_health_reports_collectors(app):
     assert resp.status_code == 200
     names = {c["name"] for c in resp.json()}
     assert names == {"chain", "github", "milestone"}
+
+
+async def _seed_pump(db, netuid=7):
+    from engine.pump_events import scan_and_store
+    now = datetime.now(timezone.utc)
+    for i, p in enumerate([1.0, 1.6, 2.0, 1.4]):
+        await insert_snapshot(db, SubnetSnapshot(
+            netuid=netuid, polled_at=now - timedelta(minutes=15 * (3 - i)),
+            alpha_price_tao=p, alpha_mcap_usd=1_000_000.0, owner_coldkey="o"))
+    await scan_and_store(db, since_days=7)
+
+
+async def test_pumps_page_lists_events(app, db):
+    await _seed_pump(db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/pumps")
+    assert resp.status_code == 200
+    assert "SN7" in resp.text and "2.00" in resp.text
+
+
+async def test_subnet_page_shows_pump_record(app, db):
+    await _seed_pump(db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/subnet/7")
+    assert "Pump record" in resp.text

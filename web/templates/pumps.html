@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pump Events — TAO Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; font-size: 13px; }
+    .header { background: #1a1a2e; padding: 10px 16px; display: flex; gap: 16px; align-items: center; border-bottom: 1px solid #333; }
+    .header a { color: #555; text-decoration: none; font-size: 0.8rem; }
+    .header a:hover { color: #00d4aa; }
+    .header h1 { font-size: 1rem; color: #00d4aa; }
+    .page { max-width: 900px; margin: 0 auto; padding: 20px 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align: left; padding: 6px 8px; color: #555; border-bottom: 1px solid #222; }
+    td { padding: 6px 8px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+    td a { color: #00d4aa; text-decoration: none; }
+    .ratio { color: #ffb74d; font-weight: bold; }
+    .active { color: #00d4aa; }
+    .closed { color: #555; }
+    .lead { font-size: 0.72rem; color: #888; }
+    .lead .none { color: #333; font-style: italic; }
+    .note { color: #444; font-size: 0.75rem; margin-top: 10px; }
+    .empty { color: #333; font-style: italic; padding: 8px 0; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <a href="/">← Dashboard</a>
+  <h1>🔥 Pump Events</h1>
+</div>
+<div class="page">
+  <table>
+    <tr><th>Subnet</th><th>Start</th><th>Ratio</th><th>Status</th><th>Retrace</th><th>Led by (T-6h)</th></tr>
+    {% for ev in events %}
+    <tr>
+      <td><a href="/subnet/{{ ev.netuid }}">SN{{ ev.netuid }} {{ ev.name }}</a></td>
+      <td>{{ ev.start_at[:16] }}</td>
+      <td class="ratio">{{ "%.2f"|format(ev.ratio) }}x</td>
+      <td class="{{ ev.status }}">{{ ev.status }}</td>
+      <td>{% if ev.retrace_pct is not none %}{{ "%.0f"|format(ev.retrace_pct * 100) }}%{% else %}—{% endif %}</td>
+      <td class="lead">
+        {% set leads = [] %}
+        {% if ev.lead_swing is not none and ev.lead_swing >= 70 %}{% set _ = leads.append("swing " ~ ("%.0f"|format(ev.lead_swing))) %}{% endif %}
+        {% if ev.lead_emergence is not none and ev.lead_emergence >= 70 %}{% set _ = leads.append("emerg " ~ ("%.0f"|format(ev.lead_emergence))) %}{% endif %}
+        {% if ev.lead_catalyst is not none %}{% set _ = leads.append("cata " ~ ("%.0f"|format(ev.lead_catalyst))) %}{% endif %}
+        {% if leads %}{{ leads | join(" · ") }}{% else %}<span class="none">nothing</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not events %}<tr><td colspan="6" class="empty">No pump events recorded yet.</td></tr>{% endif %}
+  </table>
+  <p class="note">Event = price ≥ {{ "%.1f"|format(1.5) }}x its trailing 72h low (mcap ≥ $250k at start). "Led by" shows signals ≥ 70 (or any catalyst) six hours before the pump began — the honesty column.</p>
+</div>
+</body>
+</html>

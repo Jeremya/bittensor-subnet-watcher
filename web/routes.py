@@ -32,6 +32,7 @@ from engine.recommendations import (
 )
 from engine.health import compute_collector_health
 from engine.mentions import add_manual_mention
+from engine.pump_events import get_pump_events_for_netuid, get_recent_pump_events
 from engine.policy import build_signal_from_snapshot, verdict_for_subnet
 from engine.signals import SCORING_ALERT_TYPES
 
@@ -136,6 +137,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             return HTMLResponse("Subnet not found", status_code=404)
 
         alerts = await get_alerts_for_netuid(db, netuid, limit=10)
+        pump_events = await get_pump_events_for_netuid(db, netuid, limit=5)
         analyst_mentions = await get_analyst_mentions_for_netuid(db, netuid, limit=10)
         milestones = await get_milestones_for_netuid(db, netuid, limit=10)
         all_snaps = await get_latest_snapshots_with_registry(db)
@@ -311,6 +313,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         return templates.TemplateResponse(request, "subnet.html", {
             "snap": dict(snap),
             "alerts": alerts,
+            "pump_events": pump_events,
             "analyst_mentions": analyst_mentions,
             "milestones": milestones,
             "mcap_rank": mcap_rank,
@@ -372,6 +375,31 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
     async def analysts_remove(handle: str):
         await remove_analyst_handle(db, handle)
         return RedirectResponse("/analysts", status_code=303)
+
+    @app.get("/pumps", response_class=HTMLResponse)
+    async def pumps_page(request: Request):
+        events = await get_recent_pump_events(db, limit=100)
+        registry = await get_registry(db)
+        enriched = []
+        for ev in events:
+            row = dict(ev)
+            reg = registry.get(ev["netuid"])
+            row["name"] = (reg["name"] if reg else None) or f"SN{ev['netuid']}"
+            # signals at T-6h before start (the "did anything lead it?" column)
+            cursor = await db.execute(
+                """
+                SELECT swing_score, emergence_score, catalyst_score FROM snapshots
+                WHERE netuid=? AND datetime(polled_at) <= datetime(?, '-6 hours')
+                ORDER BY polled_at DESC LIMIT 1
+                """,
+                (ev["netuid"], ev["start_at"]),
+            )
+            lead = await cursor.fetchone()
+            row["lead_swing"] = lead["swing_score"] if lead else None
+            row["lead_emergence"] = lead["emergence_score"] if lead else None
+            row["lead_catalyst"] = lead["catalyst_score"] if lead else None
+            enriched.append(row)
+        return templates.TemplateResponse(request, "pumps.html", {"events": enriched})
 
     @app.get("/emerging", response_class=HTMLResponse)
     async def emerging(request: Request):
