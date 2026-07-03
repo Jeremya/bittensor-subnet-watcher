@@ -67,23 +67,14 @@ dry run.
 
 ---
 
-### Persist explicit signal columns
-**What:** Add to `snapshots` table: `flow_score`, `relative_value_score`,
-`tradability_score`, `catalyst_score`, `risk_penalty`, `swing_score`. Write them in
-`engine/scorer.py` after `compute_swing_signal()`. Add migration path in `db/database.py`.
-
-**Why:** Enables backtesting over historical data, richer `/api/snapshots` responses, and
-lets the portfolio route read pre-computed signal fields from DB instead of recomputing them
-at request time (which currently requires loading history per subnet).
-
-**Depends on:** Tasks 1+4 (wire context + unify policy) merged first so signal values are
-stabilized before you start logging them.
-
-**Where to start:** `db/database.py` `SCHEMA_SQL`, migration `ADD COLUMN` block, then
-`engine/scorer.py` after `swing = compute_swing_signal(...)`.
-
-**Effort:** S (2 hours)
-**Priority:** P1
+### ✅ Persist explicit signal columns — DONE (entry never checked off)
+All six columns (`flow_score`, `relative_value_score`, `tradability_score`,
+`catalyst_score`, `risk_penalty`, `swing_score`) exist in `SCHEMA_SQL` + the
+migration list, are written in `engine/scorer.py` after `compute_swing_signal()`,
+and are populated on 100% of rows since 2026-06-15 (verified 2026-07-03).
+Note: `catalyst_score` NULL is intentional — `compute_catalyst_score` returns
+None when no catalyst is active. Backtest runs off stored `swing_score`;
+routes read pre-computed fields via `build_signal_from_snapshot`.
 
 ---
 
