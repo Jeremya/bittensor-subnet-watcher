@@ -22,11 +22,12 @@ panel (`/api/health`) + `collector_stale` alerts. Backups only on schema change;
   avg 94.2 vs 99.6; swing_score always present). No further code fix needed.
 
 ### New follow-ups (from 2026-07-02 investigation)
-- **SDK upgrade to silence per-cycle fallback** — bittensor 10.2.0 predates the
-  chain's Swap pallet change, so every poll logs
-  `chain_bulk_price_storage_missing` and makes 129 extra `get_subnet_price` RPC
-  calls. Upgrade bittensor when a release supports the new storage, then remove
-  the fallback warning noise. Effort: S–M (SDK upgrades need regression testing).
+- ✅ **SDK upgrade — DONE (2026-07-03).** bittensor 10.2.0 → 10.5.0. Verified in a
+  scratch venv first, then live: `ChainCollector.collect()` returns 129/129 prices
+  and slippage via the bulk path, no `chain_bulk_price_storage_missing` fallback.
+  Upgrade note: uninstall `scalecodec`+`cyscale`, force-reinstall `cyscale`
+  (namespace conflict). Fallback code kept as insurance for the next runtime
+  upgrade — it is dormant now. **Monitor restart required to load 10.5.0.**
 - **Calibration window caveat** — the Jun 26–30 outage means a contiguous clean
   30-day swing history lands ~Jul 31, not Jul 15. A Jul 15 run can still include
   Jun 15–25 (swing_score fully populated) with the 47-subnet tradability caveat.

@@ -1,4 +1,7 @@
-bittensor>=7.0.0
+# 10.5+ required: chain runtime removed Swap.AlphaSqrtPrice (~2026-06-26).
+# If upgrading over an old venv hits a scalecodec/cyscale namespace conflict:
+#   pip uninstall scalecodec cyscale -y && pip install cyscale --force-reinstall
+bittensor>=10.5.0
 aiohttp>=3.9.0
 certifi
 python-telegram-bot>=20.0
