@@ -184,6 +184,8 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
         "reg_cost_tao": 2.0,
         "n_neurons": 100,
         "max_allowed_uids": 256,
+        "volume_24h_alpha": 500.0,
+        "buy_slippage_pct": 1.0,
     }
 
     with patch.object(main.ChainCollector, "collect", AsyncMock(return_value=[snap])), \
@@ -232,6 +234,8 @@ async def test_poll_cycle_passes_historical_alpha_price_to_scoring(monkeypatch):
             "reg_cost_tao": 2.0,
             "n_neurons": 100,
             "max_allowed_uids": 256,
+            "volume_24h_alpha": 500.0,
+            "buy_slippage_pct": 1.0,
         }
     )
 
