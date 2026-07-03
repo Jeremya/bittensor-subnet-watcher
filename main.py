@@ -35,6 +35,7 @@ from engine.health import sweep_collector_conditions
 from engine.alerts import (
     evaluate_alerts,
     evaluate_convergence,
+    evaluate_ignition,
     fire_milestone_alerts,
 )
 from bot.telegram import TelegramBot
@@ -153,6 +154,8 @@ async def poll_cycle() -> None:
                 reg_cost_tao=r["reg_cost_tao"],
                 n_neurons=r["n_neurons"],
                 max_allowed_uids=r["max_allowed_uids"],
+                volume_24h_alpha=r["volume_24h_alpha"],
+                buy_slippage_pct=r["buy_slippage_pct"],
             )
             for r in rows
         ]
@@ -207,6 +210,7 @@ async def poll_cycle() -> None:
 
     known_netuids = set(prev_by_netuid.keys())
     await evaluate_alerts(_db, chain_snapshots, registry, prev_snaps_obj, known_netuids)
+    await evaluate_ignition(_db, chain_snapshots, history_by_netuid, registry)
     await evaluate_convergence(_db, registry)
 
     # 6b. Collector-health sweep → collector_stale_* conditions (sentinel netuid -1).

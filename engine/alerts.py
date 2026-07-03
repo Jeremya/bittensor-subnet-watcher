@@ -509,6 +509,95 @@ async def evaluate_alerts(
     return fired
 
 
+async def _pump_runway_line(db: aiosqlite.Connection) -> Optional[str]:
+    cursor = await db.execute(
+        "SELECT COUNT(*) n FROM pump_events WHERE status='closed'"
+    )
+    row = await cursor.fetchone()
+    if row is None or row["n"] < 5:
+        return None
+    cursor = await db.execute(
+        "SELECT ratio FROM pump_events WHERE status='closed' ORDER BY ratio"
+    )
+    ratios = [r["ratio"] for r in await cursor.fetchall()]
+    median = ratios[len(ratios) // 2]
+    return f"Median recorded pump peaked {(median - 1) * 100:+.0f}% above start."
+
+
+async def evaluate_ignition(
+    db: aiosqlite.Connection,
+    snapshots: list[SubnetSnapshot],
+    history_by_netuid: dict[int, list[SubnetSnapshot]],
+    registry: dict,
+) -> list[AlertRecord]:
+    """Fire pump_ignition alerts (acute, watch-only). A poll with
+    IGNITION_CLUSTER_MIN+ ignitions collapses to one market-wide Telegram
+    message; the individual rows are still recorded for grading."""
+    from engine.ignition import detect_ignition
+
+    ignitions = []
+    for snap in snapshots:
+        sig = detect_ignition(snap, history_by_netuid.get(snap.netuid, []))
+        if sig is None:
+            continue
+        if await is_alert_in_cooldown(db, snap.netuid, "pump_ignition",
+                                      config.IGNITION_COOLDOWN_HOURS):
+            continue
+        ignitions.append((snap, sig))
+
+    if not ignitions:
+        return []
+
+    runway = await _pump_runway_line(db)
+    fired: list[AlertRecord] = []
+    cluster = len(ignitions) >= config.IGNITION_CLUSTER_MIN
+
+    for snap, sig in ignitions:
+        parts = [
+            f"Ignition: price +{sig.price_impulse_pct:.1f}% in one poll; "
+            + "; ".join(sig.confirmations) + ".",
+        ]
+        if sig.buy_slippage_pct is not None:
+            parts.append(
+                f"Entering {config.TRADABILITY_REFERENCE_TAO:.0f}τ costs "
+                f"~{sig.buy_slippage_pct:.1f}% slippage."
+            )
+        if runway:
+            parts.append(runway)
+        parts.append("Watch-only: ignition is not yet a validated buy signal.")
+        alert = AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=snap.netuid,
+            subnet_name=_registry_name(registry, snap.netuid),
+            alert_type="pump_ignition",
+            description=" ".join(parts),
+            current_value=sig.price_impulse_pct,
+            threshold=config.IGNITION_PRICE_IMPULSE_PCT,
+            notified=cluster,          # cluster: individual rows stay silent
+        )
+        await insert_alert(db, alert)
+        fired.append(alert)
+        logger.info("[ALERT] pump_ignition netuid=%d impulse=%.1f%%",
+                    snap.netuid, sig.price_impulse_pct)
+
+    if cluster:
+        names = ", ".join(_registry_name(registry, s.netuid) for s, _ in ignitions)
+        summary = AlertRecord(
+            fired_at=datetime.now(timezone.utc),
+            netuid=-1,
+            subnet_name="Market",
+            alert_type="pump_ignition",
+            description=(f"Market-wide ignition: {len(ignitions)} subnets "
+                         f"igniting this poll — {names}. Tide event likely."),
+            current_value=float(len(ignitions)),
+            threshold=float(config.IGNITION_CLUSTER_MIN),
+        )
+        await insert_alert(db, summary)
+        fired.append(summary)
+
+    return fired
+
+
 _CONVERGENCE_SIGNAL_TYPES = [
     "milestone",
     "analyst_mention",

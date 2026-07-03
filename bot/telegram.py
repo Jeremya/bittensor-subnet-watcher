@@ -21,6 +21,7 @@ ALERT_TYPE_EMOJI = {
     "milestone":       "🔬",
     "convergence":     "🚨",
     "collector_stale": "🩺",
+    "pump_ignition":   "🔥",
 }
 
 
