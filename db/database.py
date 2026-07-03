@@ -151,8 +151,26 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_netuid_time ON snapshots (netuid, polle
 CREATE INDEX IF NOT EXISTS idx_alerts_fired_at ON alerts (fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_dedup ON alerts (netuid, alert_type, fired_at);
 CREATE INDEX IF NOT EXISTS idx_analyst_mentions_netuid ON analyst_mentions (netuid, mentioned_at);
+CREATE TABLE IF NOT EXISTS pump_events (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    netuid         INTEGER NOT NULL,
+    start_at       TEXT NOT NULL,
+    peak_at        TEXT,
+    end_at         TEXT,
+    start_price    REAL NOT NULL,
+    peak_price     REAL,
+    end_price      REAL,
+    ratio          REAL,
+    retrace_pct    REAL,
+    status         TEXT NOT NULL,      -- 'active' | 'closed'
+    start_mcap_usd REAL,
+    detected_at    TEXT NOT NULL,
+    UNIQUE (netuid, start_at)
+);
+
 CREATE INDEX IF NOT EXISTS idx_milestones_netuid ON subnet_milestones (netuid, published_at);
 CREATE INDEX IF NOT EXISTS idx_condition_states_live ON condition_states (netuid, condition, status);
+CREATE INDEX IF NOT EXISTS idx_pump_events_netuid ON pump_events (netuid, start_at DESC);
 """
 
 
@@ -198,7 +216,7 @@ def backup_db_file(db_path: str, keep: int = 5) -> str | None:
 _EXPECTED_TABLES = {
     "snapshots", "alerts", "subnet_registry", "portfolio_positions",
     "analyst_watchlist", "analyst_mentions", "subnet_milestones",
-    "collector_state", "condition_states",
+    "collector_state", "condition_states", "pump_events",
 }
 _EXPECTED_SNAPSHOT_COLS = {
     "hype_score", "net_tao_flow_tao", "max_allowed_uids", "tao_in_tao",

@@ -125,6 +125,19 @@ EMERGENCE_FLOW_ACCEL_WEIGHT: float = 0.35
 EMERGENCE_WATCH_SCORE: float = 70.0
 EMERGENCE_WATCH_COOLDOWN_HOURS: int = 24
 
+# ── Pump radar (registry + ignition) ─────────────────────────────────────────
+PUMP_MIN_RATIO: float = 1.5            # peak/local-min to qualify as a pump event
+PUMP_WINDOW_HOURS: int = 72            # trailing window for the local min & post-peak timeout
+PUMP_CLOSE_RETRACE: float = 0.5        # event closes after retracing 50% of the gain
+PUMP_MIN_MCAP_USD: float = 250_000.0   # ignore micro-cap noise events
+PUMP_MAX_GAP_HOURS: int = 6            # a data gap larger than this resets detection
+IGNITION_PRICE_IMPULSE_PCT: float = 6.0   # 1-poll price move to consider ignition (tune via scripts/tune_ignition.py)
+IGNITION_VOLUME_EXPANSION: float = 1.5    # volume_24h vs 24h earlier (confirmation)
+IGNITION_FLOW_PCT: float = 0.02           # net inflow as fraction of pool (confirmation)
+IGNITION_COOLDOWN_HOURS: int = 6
+IGNITION_CLUSTER_MIN: int = 3             # >= this many ignitions in one poll -> single cluster message
+IGNITION_MAX_PREV_AGE_MINUTES: int = POLL_INTERVAL_MINUTES * 2   # outage gate: stale prev = fake impulse
+
 
 def validate_config() -> None:
     """Fail fast at startup if required env vars are missing."""
