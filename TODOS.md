@@ -8,7 +8,20 @@ swing ≥ 75; catalyst NULL on all 15; prior-24h flows ±3% of pool, volume flat
 On-chain levels do NOT lead pumps. 8/15 started Jun 17–18 (market-wide tide).
 Strategy: detect ignition in minutes + know the tide + see catalysts — don't predict.
 
-### Phase 1 (approved, next build): Pump-event registry + ignition detector
+### ✅ Phase 1 — DONE (2026-07-03): Pump-event registry + ignition detector
+Shipped: `engine/pump_events.py` + `pump_events` table + hourly scan + backfill
+script; `scripts/signal_leadlag.py` (first run: swing 14% hit-rate, emergence/
+flow 0%, catalyst all-NULL — CEO finding now a repeatable measurement);
+`engine/ignition.py` + `pump_ignition` acute alert (tuned 6%/2% ≈ 1 false/day;
+outage gate; cluster collapse); emergence fake-0 → NULL; 🌊 tide + 🔥 scorecard
+digest lines; `/pumps` page; subnet pump-record block.
+**Honesty note:** time-based windows found 7 real events (max 2.73x/2.6d) — the
+CEO review's "15 pumps incl. 6.33x in 3d" was partly an index-vs-time artifact
+(SN16's 6.4x unfolded over weeks). Slow-grind pumps are Phase 2's target.
+**Post-merge:** restart monitor, then run
+`.venv/bin/python -m scripts.backfill_pump_events` against the live DB.
+
+### Phase 1 original scope (for reference)
 - `engine/pump_events.py` — pure detection over snapshot series → `pump_events`
   table (start/peak/retrace); hourly job; idempotent; owner-change resets;
   skip events whose pre-window spans a data gap; min-mcap floor.

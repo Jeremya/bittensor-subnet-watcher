@@ -130,8 +130,14 @@ PUMP_MIN_RATIO: float = 1.5            # peak/local-min to qualify as a pump eve
 PUMP_WINDOW_HOURS: int = 72            # trailing window for the local min & post-peak timeout
 PUMP_CLOSE_RETRACE: float = 0.5        # event closes after retracing 50% of the gain
 PUMP_MIN_MCAP_USD: float = 250_000.0   # ignore micro-cap noise events
-PUMP_MAX_GAP_HOURS: int = 6            # a data gap larger than this resets detection
-IGNITION_PRICE_IMPULSE_PCT: float = 6.0   # 1-poll price move to consider ignition (tune via scripts/tune_ignition.py)
+PUMP_MAX_GAP_HOURS: int = 24           # a data gap larger than this resets detection
+                                       # (24h: June's flaky collection has many 6-12h gaps;
+                                       # bridging those keeps real pumps detectable while a
+                                       # true outage like Jun 26-30 still resets)
+IGNITION_PRICE_IMPULSE_PCT: float = 6.0   # 1-poll price move to consider ignition
+                                          # (tuned 2026-07-03 on 7 recorded events: 6%/2% ≈ 1 false/day;
+                                          # 6%/1% catches 3/7 at 4 false/day — rejected as too noisy.
+                                          # Slow-grind pumps are regime/rotation's job, not ignition's.)
 IGNITION_VOLUME_EXPANSION: float = 1.5    # volume_24h vs 24h earlier (confirmation)
 IGNITION_FLOW_PCT: float = 0.02           # net inflow as fraction of pool (confirmation)
 IGNITION_COOLDOWN_HOURS: int = 6

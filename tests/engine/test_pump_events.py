@@ -51,9 +51,19 @@ def test_event_closes_on_retrace():
 def test_gap_resets_detection():
     snaps = series([1.0, 1.0])
     late = series([1.6, 2.0], netuid=1)
-    for i, s in enumerate(late):                     # 12h gap before the rise
+    for i, s in enumerate(late):                     # 30h gap (> PUMP_MAX_GAP_HOURS)
+        s.polled_at = snaps[-1].polled_at + timedelta(hours=30) + timedelta(minutes=15 * i)
+    assert detect_pump_events(snaps + late) == []    # rise not comparable across outage
+
+
+def test_moderate_gap_is_bridged():
+    """June's flaky collection has many 6-12h gaps; real pumps must survive them."""
+    snaps = series([1.0, 1.0])
+    late = series([1.6, 2.0], netuid=1)
+    for i, s in enumerate(late):                     # 12h gap, within tolerance
         s.polled_at = snaps[-1].polled_at + timedelta(hours=12) + timedelta(minutes=15 * i)
-    assert detect_pump_events(snaps + late) == []    # rise not comparable across gap
+    events = detect_pump_events(snaps + late)
+    assert len(events) == 1 and events[0].peak_price == 2.0
 
 
 def test_owner_change_resets_detection():
