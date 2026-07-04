@@ -36,10 +36,16 @@ CEO review's "15 pumps incl. 6.33x in 3d" was partly an index-vs-time artifact
   ignition alerts (slippage at size + median pump peak/duration from registry),
   `/pumps` dashboard page, pump-record block on subnet detail pages.
 
-### Phase 2 (queued): Regime & rotation — P2
-Aggregate net-TAO-flow tide dial + per-subnet relative-strength ranking when
-risk turns on. 8/15 pumps were one market event. Existing data; one engine
-module + dashboard banner. Judged by the lead/lag harness from day one. Effort: M.
+### ✅ Phase 2 — DONE (2026-07-04): Regime & rotation
+Shipped: `engine/regime.py` (tide magnitude + breadth, fixed thresholds
++0.3%/55% on, −0.3% or 35% off), `market_state` table (accrues from deploy),
+`regime_flip` 🌊 Telegram alerts through the condition machine with top-5
+relative-strength leaders on risk-on, persisted `rel_strength_score` column
+(0–100 percentile of 24h return, in harness SIGNAL_COLUMNS from day 1),
+dashboard regime banner + RS column, enriched digest tide line.
+Known limitation: regime can't be replayed historically until market_state
+accrues alongside pump events — threshold tuning waits for that overlap.
+First live reading: tide +0.06%, breadth 43% → neutral (correct for a quiet day).
 
 ### Phase 3 (queued): Catalyst feeds — P2
 Automated collectors from durable sources feeding the existing catalyst/
