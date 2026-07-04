@@ -59,6 +59,7 @@ class SubnetSnapshot:
     emission_value_score: Optional[float] = None
     protocol_context_score: Optional[float] = None
     spec421_score: Optional[float] = None
+    rel_strength_score: Optional[float] = None  # 0-100 percentile of 24h return vs market
 
 
 @dataclass

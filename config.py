@@ -144,6 +144,12 @@ IGNITION_COOLDOWN_HOURS: int = 6
 IGNITION_CLUSTER_MIN: int = 3             # >= this many ignitions in one poll -> single cluster message
 IGNITION_MAX_PREV_AGE_MINUTES: int = POLL_INTERVAL_MINUTES * 2   # outage gate: stale prev = fake impulse
 
+# ── Market regime (tide + breadth; thresholds tunable via lead/lag harness) ──
+REGIME_RISK_ON_TIDE_PCT: float = 0.003     # 24h aggregate net inflow >= 0.3% of total pool
+REGIME_RISK_ON_BREADTH: float = 0.55       # AND >= 55% of subnets individually inflowing
+REGIME_RISK_OFF_TIDE_PCT: float = -0.003   # tide <= -0.3% -> risk_off
+REGIME_RISK_OFF_BREADTH: float = 0.35      # OR breadth <= 35% -> risk_off
+
 
 def validate_config() -> None:
     """Fail fast at startup if required env vars are missing."""

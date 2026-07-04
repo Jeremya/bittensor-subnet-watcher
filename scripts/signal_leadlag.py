@@ -23,7 +23,7 @@ from db.database import init_db
 SIGNAL_COLUMNS = [
     "swing_score", "spec421_score", "flow_score", "emergence_score",
     "reg_demand_score", "slot_fill_score", "flow_accel_score",
-    "catalyst_score", "tradability_score",
+    "catalyst_score", "tradability_score", "rel_strength_score",
 ]
 OFFSETS_HOURS = [24, 12, 6, 1, 0]
 SAMPLE_TOLERANCE_HOURS = 2

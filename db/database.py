@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     price_ema_score    REAL,
     emission_value_score REAL,
     protocol_context_score REAL,
-    spec421_score      REAL
+    spec421_score      REAL,
+    rel_strength_score REAL
 );
 
 CREATE TABLE IF NOT EXISTS alerts (
@@ -151,6 +152,14 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_netuid_time ON snapshots (netuid, polle
 CREATE INDEX IF NOT EXISTS idx_alerts_fired_at ON alerts (fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_dedup ON alerts (netuid, alert_type, fired_at);
 CREATE INDEX IF NOT EXISTS idx_analyst_mentions_netuid ON analyst_mentions (netuid, mentioned_at);
+CREATE TABLE IF NOT EXISTS market_state (
+    polled_at     TEXT PRIMARY KEY,
+    tide_pct      REAL NOT NULL,
+    breadth_pct   REAL NOT NULL,
+    flows_24h_tao REAL NOT NULL,
+    regime        TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS pump_events (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     netuid         INTEGER NOT NULL,
@@ -216,7 +225,7 @@ def backup_db_file(db_path: str, keep: int = 5) -> str | None:
 _EXPECTED_TABLES = {
     "snapshots", "alerts", "subnet_registry", "portfolio_positions",
     "analyst_watchlist", "analyst_mentions", "subnet_milestones",
-    "collector_state", "condition_states", "pump_events",
+    "collector_state", "condition_states", "pump_events", "market_state",
 }
 _EXPECTED_SNAPSHOT_COLS = {
     "hype_score", "net_tao_flow_tao", "max_allowed_uids", "tao_in_tao",
@@ -225,7 +234,7 @@ _EXPECTED_SNAPSHOT_COLS = {
     "risk_penalty", "swing_score", "reg_demand_score", "slot_fill_score",
     "flow_accel_score", "emergence_score", "emergence_stage",
     "price_ema_score", "emission_value_score", "protocol_context_score",
-    "spec421_score", "health_score",
+    "spec421_score", "health_score", "rel_strength_score",
 }
 _EXPECTED_REGISTRY_COLS = {"category", "category_confirmed"}
 _EXPECTED_MILESTONE_COLS = {"ai_summary", "ai_take"}
@@ -292,6 +301,7 @@ async def init_db(db_path: str = config.DB_PATH) -> aiosqlite.Connection:
         ("emission_value_score", "REAL"),
         ("protocol_context_score", "REAL"),
         ("spec421_score", "REAL"),
+        ("rel_strength_score", "REAL"),
     ]:
         if col not in existing_cols:
             await conn.execute(f"ALTER TABLE snapshots ADD COLUMN {col} {definition}")
@@ -346,8 +356,8 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
             reg_demand_score, slot_fill_score, flow_accel_score,
             emergence_score, emergence_stage,
             price_ema_score, emission_value_score, protocol_context_score,
-            spec421_score
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            spec421_score, rel_strength_score
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         snap.netuid, _dt_to_str(snap.polled_at),
         snap.alpha_price_tao, snap.alpha_mcap_tao, snap.alpha_mcap_usd,
@@ -365,7 +375,7 @@ async def insert_snapshot(db: aiosqlite.Connection, snap: SubnetSnapshot) -> Non
         snap.reg_demand_score, snap.slot_fill_score, snap.flow_accel_score,
         snap.emergence_score, snap.emergence_stage,
         snap.price_ema_score, snap.emission_value_score, snap.protocol_context_score,
-        snap.spec421_score,
+        snap.spec421_score, snap.rel_strength_score,
     ))
     await db.commit()
 
