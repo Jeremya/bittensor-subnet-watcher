@@ -32,6 +32,7 @@ from engine.scorer import score_snapshots
 from engine.signals import SCORING_ALERT_TYPES
 from engine.emergence import score_emergence
 from engine.health import sweep_collector_conditions
+from engine.regime import apply_rel_strength, evaluate_regime
 from engine.alerts import (
     evaluate_alerts,
     evaluate_convergence,
@@ -179,6 +180,7 @@ async def poll_cycle() -> None:
         coverage_netuids=coverage_netuids_for_scoring,
         milestone_netuids=milestone_netuids_for_scoring,
     )
+    apply_rel_strength(chain_snapshots, history_by_netuid)
 
     # 4. Persist snapshots
     for snap in chain_snapshots:
@@ -211,6 +213,7 @@ async def poll_cycle() -> None:
     known_netuids = set(prev_by_netuid.keys())
     await evaluate_alerts(_db, chain_snapshots, registry, prev_snaps_obj, known_netuids)
     await evaluate_ignition(_db, chain_snapshots, history_by_netuid, registry)
+    await evaluate_regime(_db, registry)
     await evaluate_convergence(_db, registry)
 
     # 6b. Collector-health sweep → collector_stale_* conditions (sentinel netuid -1).

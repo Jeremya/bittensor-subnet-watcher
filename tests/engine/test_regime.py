@@ -81,3 +81,45 @@ def test_rel_strength_requires_reference_within_tolerance():
     history = {1: [_snap(1, hours_ago=60, price=1.0)]}   # too old (> 28h)
     apply_rel_strength(snaps, history)
     assert snaps[0].rel_strength_score is None
+
+
+from engine.regime import evaluate_regime, get_latest_market_state
+
+
+async def _seed_risk_on(db):
+    """24h of broad inflows: tide +5% of pool, breadth 100%, RS populated."""
+    for netuid in (1, 2, 3):
+        s = _snap(netuid, hours_ago=1, flow=50.0, price=1.0, tao_in=1000.0)
+        s.rel_strength_score = 50.0 + netuid    # so the flip message has leaders
+        await insert_snapshot(db, s)
+
+
+@pytest.mark.asyncio
+async def test_evaluate_regime_records_state_and_fires_once(tmp_path):
+    db = await init_db(str(tmp_path / "t.db"))
+    try:
+        await _seed_risk_on(db)
+        fired = []
+        for _ in range(3):                      # 2-poll hysteresis then steady
+            fired += await evaluate_regime(db, {1: {"name": "Apex"}})
+        flips = [a for a in fired if a.alert_type == "regime_flip"]
+        assert len(flips) == 1
+        assert "risk-ON" in flips[0].description
+        assert "Apex" in flips[0].description        # leaders listed by name
+        state = await get_latest_market_state(db)
+        assert state["regime"] == "risk_on"
+        cur = await db.execute("SELECT COUNT(*) FROM market_state")
+        assert (await cur.fetchone())[0] == 3
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_regime_freezes_without_data(tmp_path):
+    db = await init_db(str(tmp_path / "t.db"))
+    try:
+        fired = await evaluate_regime(db, {})
+        assert fired == []
+        assert await get_latest_market_state(db) is None
+    finally:
+        await db.close()

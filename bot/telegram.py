@@ -22,6 +22,7 @@ ALERT_TYPE_EMOJI = {
     "convergence":     "🚨",
     "collector_stale": "🩺",
     "pump_ignition":   "🔥",
+    "regime_flip":     "🌊",
 }
 
 
