@@ -81,3 +81,18 @@ async def test_digest_includes_ignition_scorecard_when_alerts_exist(tmp_path):
         assert "Ignition" in text
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_digest_tide_line_uses_market_state_when_present(tmp_path):
+    db = await init_db(str(tmp_path / "t.db"))
+    try:
+        await db.execute(
+            "INSERT INTO market_state (polled_at, tide_pct, breadth_pct, flows_24h_tao, regime)"
+            " VALUES (?, 0.005, 0.7, 4200.0, 'risk_on')",
+            (datetime.now(timezone.utc).isoformat(),))
+        await db.commit()
+        text = await build_daily_digest(db, registry={})
+        assert "breadth 70%" in text and "RISK-ON" in text
+    finally:
+        await db.close()

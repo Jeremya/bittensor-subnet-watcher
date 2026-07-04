@@ -39,14 +39,24 @@ async def build_daily_digest(db: aiosqlite.Connection,
 
     lines = [f"📋 TAO Monitor digest — {now.strftime('%Y-%m-%d %H:%M UTC')}"]
 
-    cursor = await db.execute(
-        """SELECT SUM(net_tao_flow_tao) FROM snapshots
-           WHERE datetime(polled_at) > datetime('now', '-24 hours')""")
-    row = await cursor.fetchone()
-    tide = row[0] if row and row[0] is not None else None
-    if tide is not None:
-        direction = "flowing in" if tide >= 0 else "flowing out"
-        lines.append(f"🌊 Tide: {tide:+,.0f} τ {direction} (24h, all subnets)")
+    from engine.regime import get_latest_market_state
+    state = await get_latest_market_state(db)
+    if state is not None:
+        direction = "flowing in" if state["flows_24h_tao"] >= 0 else "flowing out"
+        lines.append(
+            f"🌊 Tide: {state['flows_24h_tao']:+,.0f} τ {direction} · "
+            f"breadth {state['breadth_pct'] * 100:.0f}% · "
+            f"{state['regime'].replace('_', '-').upper()}")
+    else:
+        # Pre-regime fallback: raw 24h sum from snapshots.
+        cursor = await db.execute(
+            """SELECT SUM(net_tao_flow_tao) FROM snapshots
+               WHERE datetime(polled_at) > datetime('now', '-24 hours')""")
+        row = await cursor.fetchone()
+        tide = row[0] if row and row[0] is not None else None
+        if tide is not None:
+            direction = "flowing in" if tide >= 0 else "flowing out"
+            lines.append(f"🌊 Tide: {tide:+,.0f} τ {direction} (24h, all subnets)")
 
     cursor = await db.execute(
         """SELECT COUNT(*) FROM alerts

@@ -75,6 +75,8 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
                 signal_ready += 1
         staked_netuids = await get_staked_netuids(db)
         collector_health = await compute_collector_health(db)
+        from engine.regime import get_latest_market_state
+        market_state = await get_latest_market_state(db)
         coverage_netuids = await get_covered_netuids(db, config.ANALYST_COVERAGE_DECAY_HOURS)
         milestone_arxiv_check = await get_collector_state(db, "milestone_last_arxiv_check")
         milestone_hf_check = await get_collector_state(db, "milestone_last_hf_check")
@@ -128,6 +130,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             "all_categories": all_categories,
             "data_health": data_health,
             "collector_health": collector_health,
+            "market_state": market_state,
         })
 
     @app.get("/subnet/{netuid}", response_class=HTMLResponse)

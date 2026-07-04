@@ -86,6 +86,14 @@
   <a href="/analysts" style="color:#00d4aa; font-size:0.85rem; text-decoration:none;">Analysts ↗</a>
   <a href="/portfolio" style="color:#00d4aa; font-size:0.85rem; text-decoration:none;">Portfolio ↗</a>
 </header>
+{% if market_state %}
+<div style="padding:6px 16px;font-family:monospace;font-size:0.8rem;border-bottom:1px solid #222;
+            background:{{ '#0d2818' if market_state.regime == 'risk_on' else ('#2a0d0d' if market_state.regime == 'risk_off' else '#141414') }};
+            color:{{ '#00d4aa' if market_state.regime == 'risk_on' else ('#ff5252' if market_state.regime == 'risk_off' else '#777') }};">
+  🌊 {{ market_state.regime.replace('_', '-') | upper }} · tide {{ "%+.2f"|format(market_state.tide_pct * 100) }}% ·
+  breadth {{ "%.0f"|format(market_state.breadth_pct * 100) }}% · {{ '{:+,.0f}'.format(market_state.flows_24h_tao) }} τ/24h
+</div>
+{% endif %}
 <div class="health-strip">
   <div class="health-cell">
     <span class="health-label">Fresh subnets</span>
@@ -144,7 +152,7 @@
       <thead>
         <tr>
           <th>#</th><th>Subnet</th><th>Score</th>
-          <th>Spec 421</th>
+          <th>Spec 421</th><th title="Relative strength: 24h return percentile vs market">RS</th>
           <th>Em. Rank</th><th>MC. Rank</th>
           <th>MCap</th><th>Emit/day</th><th>Trend</th>
         </tr>
@@ -176,6 +184,7 @@
           </td>
           <td class="{{ cls }}">{{ "%.1f"|format(score) if score else "—" }}</td>
           <td class="{{ s421_cls }}">{{ "%.1f"|format(s421) if s421 is not none else "—" }}</td>
+          <td class="{{ 'score-high' if row.rel_strength_score is not none and row.rel_strength_score >= 80 else 'score-null' }}">{{ "%.0f"|format(row.rel_strength_score) if row.rel_strength_score is not none else "—" }}</td>
           <td>{{ ("#" ~ row.emission_rank) if row.emission_rank else "—" }}</td>
           <td>{{ ("#" ~ row.mcap_rank) if row.mcap_rank else "—" }}</td>
           <td>{{ fmt_usd(row.alpha_mcap_usd) }}</td>

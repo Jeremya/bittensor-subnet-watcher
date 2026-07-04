@@ -451,3 +451,14 @@ async def test_subnet_page_shows_pump_record(app, db):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/subnet/7")
     assert "Pump record" in resp.text
+
+
+async def test_dashboard_shows_regime_banner(app, db):
+    await db.execute(
+        "INSERT INTO market_state (polled_at, tide_pct, breadth_pct, flows_24h_tao, regime)"
+        " VALUES (?, 0.005, 0.7, 4200.0, 'risk_on')",
+        (datetime.now(timezone.utc).isoformat(),))
+    await db.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/")
+    assert "RISK-ON" in resp.text
