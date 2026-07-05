@@ -462,3 +462,16 @@ async def test_dashboard_shows_regime_banner(app, db):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/")
     assert "RISK-ON" in resp.text
+
+
+async def test_subnet_page_shows_owner_lock(app, db):
+    from db.database import insert_owner_lock
+    now = datetime.now(timezone.utc)
+    await insert_snapshot(db, SubnetSnapshot(netuid=51, polled_at=now,
+                                             alpha_price_tao=0.05))
+    await insert_owner_lock(db, 51, now, locked_alpha=340_000.0,
+                            locked_tao=17_000.0, locked_pct=0.20)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/subnet/51")
+    assert "Owner lock" in resp.text
+    assert "20.0%" in resp.text

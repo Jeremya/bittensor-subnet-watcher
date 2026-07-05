@@ -11,6 +11,7 @@ from db.database import (
     get_active_analyst_coverage_netuids,
     get_analyst_mentions_for_netuid,
     get_analyst_watchlist,
+    get_owner_locks_for_netuid,
     get_recent_analyst_mentions,
     get_registry,
     get_covered_netuids,
@@ -141,6 +142,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
 
         alerts = await get_alerts_for_netuid(db, netuid, limit=10)
         pump_events = await get_pump_events_for_netuid(db, netuid, limit=5)
+        owner_locks = await get_owner_locks_for_netuid(db, netuid, limit=2)
         analyst_mentions = await get_analyst_mentions_for_netuid(db, netuid, limit=10)
         milestones = await get_milestones_for_netuid(db, netuid, limit=10)
         all_snaps = await get_latest_snapshots_with_registry(db)
@@ -317,6 +319,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
             "snap": dict(snap),
             "alerts": alerts,
             "pump_events": pump_events,
+            "owner_locks": owner_locks,
             "analyst_mentions": analyst_mentions,
             "milestones": milestones,
             "mcap_rank": mcap_rank,

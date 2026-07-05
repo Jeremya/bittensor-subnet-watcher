@@ -368,6 +368,26 @@
     </div>
     {% endif %}
 
+    {% if owner_locks %}
+    {% set lk = owner_locks[0] %}
+    <div class="card full-width" style="margin-top:16px">
+      <h3>Owner lock</h3>
+      <div class="alert-item">
+        {% if lk.locked_alpha > 0 %}
+        <div class="alert-type">🔒 {{ '{:,.0f}'.format(lk.locked_alpha) }} α
+          {% if lk.locked_tao is not none %}(~{{ '{:,.0f}'.format(lk.locked_tao) }} τ{% if lk.locked_pct is not none %} · {{ "%.1f"|format(lk.locked_pct * 100) }}% of supply{% endif %}){% endif %}</div>
+        {% else %}
+        <div class="alert-type" style="color:#555">🔓 none — owner holds no lock</div>
+        {% endif %}
+        {% if owner_locks|length > 1 %}
+        {% set delta = lk.locked_alpha - owner_locks[1].locked_alpha %}
+        <div class="alert-desc">Δ {{ '{:+,.0f}'.format(delta) }} α since previous sweep</div>
+        {% endif %}
+        <div class="alert-time">{{ lk.checked_at[:16] }} UTC</div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="card full-width" style="margin-top:16px">
       <h3>Pump record</h3>
       {% for ev in pump_events %}

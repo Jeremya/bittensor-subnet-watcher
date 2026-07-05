@@ -64,7 +64,15 @@ delta collection → wallet→pump-lead history from the registry → alert when
 repeat pre-pump wallet enters. Only signal class that can LEAD news-driven
 pumps. Effort: L–XL, hypothesis until the harness grades it.
 
-### Small (queued): Locked-alpha collection — P2 (idea via @TAOTemplar, 2026-07-03)
+### ✅ Locked-alpha collection v1 — DONE (2026-07-05)
+`collectors/locks.py` daily sweep + startup run; `owner_locks` history table;
+subnet-page "Owner lock" block with Δ vs previous sweep. First live sweep:
+129/129, SN51 17.9k τ (matches taoflute). None lock = measured 0.0. NOTE:
+owner-only — all-staker aggregate rides the Phase 4 whale spike. Deferred
+consumers (need history): lock-delta catalyst alerts, float-adjusted rotation,
+harness integration.
+
+### Original idea (reference): Locked-alpha collection — P2 (idea via @TAOTemplar, 2026-07-03)
 Daily sweep: `get_coldkey_lock(owner_coldkey, netuid)` for all 129 subnets (SDK
 10.5 verified; DynamicInfo does NOT carry it) → persist owner-locked alpha
 (τ value + % of supply + delta). Three uses, all harness-testable once data
