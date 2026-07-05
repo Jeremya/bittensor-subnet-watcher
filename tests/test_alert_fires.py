@@ -121,3 +121,13 @@ async def test_evaluate_convergence_respects_cooldown(db):
     await evaluate_convergence(db, REGISTRY)   # fires, sets 48h cooldown
     fired2 = await evaluate_convergence(db, REGISTRY)  # same signals, still in cooldown
     assert len(fired2) == 0
+
+
+@pytest.mark.asyncio
+async def test_fire_milestone_alerts_github_release_emoji(db):
+    now = datetime.now(timezone.utc)
+    await insert_milestone(db, 3, "github_release", "v2.0 — Mainnet",
+                           "https://github.com/o/r/releases/tag/v2.0", now)
+    fired = await fire_milestone_alerts(db, REGISTRY)
+    assert len(fired) == 1
+    assert fired[0].description.startswith("🚢")

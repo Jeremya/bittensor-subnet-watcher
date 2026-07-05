@@ -47,11 +47,15 @@ Known limitation: regime can't be replayed historically until market_state
 accrues alongside pump events — threshold tuning waits for that overlap.
 First live reading: tide +0.06%, breadth 43% → neutral (correct for a quiet day).
 
-### Phase 3 (queued): Catalyst feeds — P2
-Automated collectors from durable sources feeding the existing catalyst/
-convergence pipeline: GitHub releases/tags first (API already integrated),
-then project blog/site RSS, taostats/exchange listing announcements. The pumps
-were news-driven; our catalyst inputs are near-empty. Effort: M–L.
+### 🔶 Phase 3a — GitHub releases DONE (2026-07-05); BLOCKED on token
+Releases are a third milestone source (milestone_type='github_release', 🚢
+alerts, catalyst/convergence pickup, 7-day first-run cap, 401/403 aborts the
+source loudly). **BLOCKER: GITHUB_TOKEN expired ~2026-07-02 09:00** — the
+hourly GitHub collector has been failing all 111 repos since (ok=0), hidden
+by gh_* carry-forward. Fixed the blind spot: `github_last_success` heartbeat
+in collector_state now drives the health panel (carried data can't fake it).
+**User action: regenerate GITHUB_TOKEN in .env, restart monitor.**
+Remaining Phase 3: tags-only repos, project blog/site RSS, listing feeds.
 
 ### Phase 4 (queued): Whale fingerprints — P3
 First step is a 1-hour spike: test per-subnet staker enumeration on SDK 10.5

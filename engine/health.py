@@ -79,9 +79,15 @@ async def compute_collector_health(db: aiosqlite.Connection,
     _apply_staleness(chain, timedelta(minutes=config.HEALTH_CHAIN_STALE_MINUTES), now)
 
     gh_total, gh_nulls = await _null_rates(db, ["gh_last_push"], cutoff_24h)
+    # Prefer the success heartbeat: gh_* fields are carried forward between
+    # snapshots, so "recent row with gh_stars" cannot distinguish a live
+    # collector from a dead one (the 2026-07-02 expired-token failure hid
+    # behind carried data for 3 days). Fall back for pre-heartbeat DBs.
+    gh_heartbeat = await _newest(
+        db, "SELECT value FROM collector_state WHERE key='github_last_success'")
     github = CollectorHealth(
         name="github",
-        last_success=await _newest(
+        last_success=gh_heartbeat or await _newest(
             db, "SELECT MAX(polled_at) FROM snapshots WHERE gh_stars IS NOT NULL"),
         rows_24h=gh_total,
         null_rates=gh_nulls,
@@ -89,7 +95,8 @@ async def compute_collector_health(db: aiosqlite.Connection,
     _apply_staleness(github, timedelta(hours=config.HEALTH_GITHUB_STALE_HOURS), now)
 
     checks = []
-    for key in ("milestone_last_arxiv_check", "milestone_last_hf_check"):
+    for key in ("milestone_last_arxiv_check", "milestone_last_hf_check",
+                "milestone_last_github_check"):
         val = await _newest(db, "SELECT value FROM collector_state WHERE key=?", (key,))
         if val:
             checks.append(val)

@@ -21,7 +21,11 @@ _FIRST_RUN_LOOKBACK_DAYS = 7
 
 
 class _RateLimited(Exception):
-    """GitHub returned 403: abort the releases source for this run."""
+    """GitHub returned 401/403: abort the releases source for this run.
+
+    401 (bad credentials) and 403 (rate limit) both affect every repo — one
+    loud warning beats 109 silent empty results (the dead-token failure of
+    2026-07-02 went unnoticed for 3 days behind per-repo warnings)."""
 _ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
 _VERSION_RE = re.compile(r"v\d+$")
 
@@ -225,8 +229,8 @@ class MilestoneCollector:
                     params={"per_page": "5"},
                     timeout=aiohttp.ClientTimeout(total=20),
                 ) as resp:
-                    if resp.status == 403:
-                        raise _RateLimited(url)
+                    if resp.status in (401, 403):
+                        raise _RateLimited(f"status={resp.status} {url}")
                     if resp.status != 200:
                         return []
                     payload = await resp.json()
@@ -300,9 +304,10 @@ class MilestoneCollector:
                 try:
                     release_entries = await MilestoneCollector._query_github_releases(
                         repo_parts[0], repo_parts[1], github_since)
-                except _RateLimited:
-                    logger.warning("[COLLECTOR] milestone: github rate-limited — "
-                                   "skipping releases for the rest of this run")
+                except _RateLimited as exc:
+                    logger.warning("[COLLECTOR] milestone: github auth/rate-limit "
+                                   "(%s) — skipping releases for the rest of this run",
+                                   exc)
                     releases_enabled = False
                     release_entries = []
                 for entry in release_entries:

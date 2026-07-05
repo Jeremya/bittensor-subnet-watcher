@@ -259,8 +259,15 @@ async def poll_cycle() -> None:
 
 async def github_collect() -> None:
     """60-min GitHub data refresh. Updates snapshots and registry categories in DB."""
+    from db.database import set_collector_state
     registry = await get_registry(_db)
     gh_data = await GitHubCollector.collect(registry)
+    if gh_data:
+        # Success heartbeat: gh_* fields are carried forward between snapshots,
+        # so the health panel needs a signal that cannot be faked by stale data.
+        await set_collector_state(
+            _db, "github_last_success", datetime.now(timezone.utc).isoformat()
+        )
     for netuid, data in gh_data.items():
         gh_push = data["gh_last_push"].isoformat() if data["gh_last_push"] else None
         await _db.execute("""

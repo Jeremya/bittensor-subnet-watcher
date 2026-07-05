@@ -64,3 +64,33 @@ async def test_empty_db_reports_all_stale(tmp_path):
         assert all(h.stale for h in health)
     finally:
         await db.close()
+
+
+@pytest.mark.asyncio
+async def test_github_staleness_uses_success_heartbeat_not_carried_data(tmp_path):
+    """Carried-forward gh_* fields must not mask a dead collector: when the
+    github_last_success heartbeat exists and is old, github is stale even
+    though recent snapshots carry non-NULL gh_stars (the Jul 2 dead-token
+    failure hid behind exactly this)."""
+    db = await init_db(str(tmp_path / "t.db"))
+    try:
+        await insert_snapshot(db, _snap(age_minutes=5))       # fresh carried gh_stars
+        await set_collector_state(
+            db, "github_last_success",
+            (datetime.now(timezone.utc) - timedelta(days=3)).isoformat())
+        health = {h.name: h for h in await compute_collector_health(db)}
+        assert health["github"].stale is True
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
+async def test_github_staleness_falls_back_to_snapshots_without_heartbeat(tmp_path):
+    """Pre-heartbeat DBs keep the old behavior."""
+    db = await init_db(str(tmp_path / "t.db"))
+    try:
+        await insert_snapshot(db, _snap(age_minutes=5))
+        health = {h.name: h for h in await compute_collector_health(db)}
+        assert health["github"].stale is False
+    finally:
+        await db.close()

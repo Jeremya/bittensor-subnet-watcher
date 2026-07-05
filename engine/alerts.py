@@ -697,7 +697,8 @@ async def fire_milestone_alerts(
     for row in rows:
         netuid = row["netuid"]
         subnet_name = _registry_name(registry, netuid)
-        type_emoji = "🔬" if row["milestone_type"] == "arxiv" else "🤗"
+        type_emoji = {"arxiv": "🔬", "huggingface": "🤗",
+                      "github_release": "🚢"}.get(row["milestone_type"], "📌")
 
         desc_parts = [
             f"{type_emoji} {subnet_name} — new {row['milestone_type']}: {row['title']}",
