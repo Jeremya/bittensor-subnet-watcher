@@ -238,3 +238,17 @@ async def test_scoring_alert_context_includes_active_conditions(db):
     ctx = await get_scoring_alert_context(db, SCORING_ALERT_TYPES, hours=72)
     assert "emission_near_zero" in ctx.get(7, set())
     assert -1 not in ctx
+
+
+async def test_owner_lock_roundtrip(db):
+    from db.database import insert_owner_lock, get_owner_locks_for_netuid
+    t0 = datetime.now(timezone.utc) - timedelta(days=1)
+    t1 = datetime.now(timezone.utc)
+    await insert_owner_lock(db, 51, t0, locked_alpha=300_000.0,
+                            locked_tao=15_000.0, locked_pct=0.18)
+    await insert_owner_lock(db, 51, t1, locked_alpha=340_000.0,
+                            locked_tao=17_900.0, locked_pct=0.20)
+    rows = await get_owner_locks_for_netuid(db, 51, limit=2)
+    assert len(rows) == 2
+    assert rows[0]["locked_alpha"] == 340_000.0       # newest first
+    assert rows[1]["locked_alpha"] == 300_000.0

@@ -152,6 +152,15 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_netuid_time ON snapshots (netuid, polle
 CREATE INDEX IF NOT EXISTS idx_alerts_fired_at ON alerts (fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_dedup ON alerts (netuid, alert_type, fired_at);
 CREATE INDEX IF NOT EXISTS idx_analyst_mentions_netuid ON analyst_mentions (netuid, mentioned_at);
+CREATE TABLE IF NOT EXISTS owner_locks (
+    netuid       INTEGER NOT NULL,
+    checked_at   TEXT NOT NULL,
+    locked_alpha REAL NOT NULL,
+    locked_tao   REAL,
+    locked_pct   REAL,
+    PRIMARY KEY (netuid, checked_at)
+);
+
 CREATE TABLE IF NOT EXISTS market_state (
     polled_at     TEXT PRIMARY KEY,
     tide_pct      REAL NOT NULL,
@@ -226,6 +235,7 @@ _EXPECTED_TABLES = {
     "snapshots", "alerts", "subnet_registry", "portfolio_positions",
     "analyst_watchlist", "analyst_mentions", "subnet_milestones",
     "collector_state", "condition_states", "pump_events", "market_state",
+    "owner_locks",
 }
 _EXPECTED_SNAPSHOT_COLS = {
     "hype_score", "net_tao_flow_tao", "max_allowed_uids", "tao_in_tao",
@@ -901,6 +911,30 @@ async def get_milestones_for_netuid(db: aiosqlite.Connection,
         WHERE netuid=?
         ORDER BY published_at DESC LIMIT ?
         """,
+        (netuid, limit),
+    )
+    return await cursor.fetchall()
+
+
+async def insert_owner_lock(db: aiosqlite.Connection, netuid: int,
+                            checked_at: datetime, *, locked_alpha: float,
+                            locked_tao: Optional[float],
+                            locked_pct: Optional[float]) -> None:
+    await db.execute(
+        """
+        INSERT OR REPLACE INTO owner_locks
+            (netuid, checked_at, locked_alpha, locked_tao, locked_pct)
+        VALUES (?,?,?,?,?)
+        """,
+        (netuid, checked_at.isoformat(), locked_alpha, locked_tao, locked_pct),
+    )
+    await db.commit()
+
+
+async def get_owner_locks_for_netuid(db: aiosqlite.Connection, netuid: int,
+                                     limit: int = 2) -> list[aiosqlite.Row]:
+    cursor = await db.execute(
+        "SELECT * FROM owner_locks WHERE netuid=? ORDER BY checked_at DESC LIMIT ?",
         (netuid, limit),
     )
     return await cursor.fetchall()
