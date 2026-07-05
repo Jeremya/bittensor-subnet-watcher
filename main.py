@@ -295,6 +295,14 @@ async def pump_scan() -> None:
     logger.info("[PUMP_SCAN] events_upserted=%d", count)
 
 
+async def lock_sweep() -> None:
+    """Daily: owner locked-alpha sweep (history cannot be backfilled)."""
+    from collectors.chain import _subtensor
+    from collectors.locks import LockCollector
+    if _subtensor:
+        await LockCollector.collect(_subtensor, _db)
+
+
 async def daily_digest() -> None:
     """08:00 local: one-message summary of active conditions + collector health."""
     from engine.digest import build_daily_digest
@@ -360,11 +368,16 @@ async def main() -> None:
         pump_scan, "interval", hours=1,
         max_instances=1, id="pump_scan"
     )
+    scheduler.add_job(
+        lock_sweep, "interval", hours=24,
+        max_instances=1, id="locks"
+    )
     scheduler.start()
 
     # Run initial poll + registry immediately
     asyncio.create_task(registry_refresh_and_prune())
     asyncio.create_task(poll_cycle())
+    asyncio.create_task(lock_sweep())
 
     logger.info("[STARTUP] db=ok telegram=ok scheduler=ok dashboard=http://%s:%d",
                 config.DASHBOARD_HOST, config.DASHBOARD_PORT)
