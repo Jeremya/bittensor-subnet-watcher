@@ -205,6 +205,18 @@ def compute_emission_value_scores(
             )
             continue
 
+        # Zero emission is a measured fact (the protocol pays this subnet
+        # nothing), not missing data: score it 0.0 so it drags the weighted
+        # spec421 score down instead of being renormalized away — otherwise a
+        # pure speculation pump on an unclaimed subnet scores on price EMA
+        # alone (SN116, 2026-07-05).
+        if snap.daily_emission_tao is not None and snap.daily_emission_tao <= 0:
+            result[snap.netuid] = Spec421Component(
+                score=0.0,
+                risks=["zero protocol emission"],
+            )
+            continue
+
         raw = raw_yields.get(snap.netuid)
         if raw is not None and min_yield is not None and max_yield is not None:
             if max_yield == min_yield:

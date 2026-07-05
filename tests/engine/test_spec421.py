@@ -163,17 +163,27 @@ def test_emission_value_scores_tied_identical_duplicates_are_accepted():
     assert scores[2].score is not None
 
 
-def test_emission_value_scores_reject_non_positive_emission_inputs():
+def test_emission_value_scores_zero_emission_is_worst_not_missing():
+    """Semantics change 2026-07-05: zero/negative emission is measured fact
+    (protocol pays nothing) and scores 0.0 — it must not be renormalized away."""
     for overrides in (
         {"daily_emission_tao": 0.0},
         {"daily_emission_tao": -1.0},
+    ):
+        snap = make_snap(**overrides)
+        scores = compute_emission_value_scores([snap])
+        assert scores[1].score == 0.0
+        assert "zero protocol emission" in scores[1].risks
+
+
+def test_emission_value_scores_reject_unknown_price_inputs():
+    """Bad/missing price data is genuinely unknown -> None."""
+    for overrides in (
         {"tao_usd_price": 0.0},
         {"tao_usd_price": -300.0},
     ):
         snap = make_snap(**overrides)
-
         scores = compute_emission_value_scores([snap])
-
         assert scores[1].score is None
         assert "missing emission-value data" in scores[1].notes
 
@@ -261,3 +271,26 @@ def test_spec421_signals_tied_duplicate_conflict_raises():
 
     with pytest.raises(ValueError, match="ambiguous duplicate Spec 421 snapshot for netuid 1"):
         compute_spec421_signals([first, second], {1: price_history([1.0, 0.95, 0.9, 0.82])})
+
+
+def test_zero_emission_scores_zero_not_none():
+    """Zero emission is measured fact (protocol pays nothing), not missing
+    data: it must score 0.0 so it drags the weighted spec421 score down,
+    instead of being renormalized away leaving a pure price-pump score."""
+    snap = SubnetSnapshot(
+        netuid=116, polled_at=datetime.now(timezone.utc),
+        daily_emission_tao=0.0, tao_usd_price=300.0,
+        alpha_mcap_usd=2_000_000.0, alpha_mcap_tao=5_000.0, emission_rank=120)
+    result = compute_emission_value_scores([snap])
+    comp = result[116]
+    assert comp.score == 0.0
+    assert any("zero" in r for r in comp.risks)
+
+
+def test_missing_emission_still_none():
+    snap = SubnetSnapshot(
+        netuid=5, polled_at=datetime.now(timezone.utc),
+        daily_emission_tao=None, tao_usd_price=300.0,
+        alpha_mcap_usd=2_000_000.0, alpha_mcap_tao=5_000.0)
+    result = compute_emission_value_scores([snap])
+    assert result[5].score is None
