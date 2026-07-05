@@ -142,3 +142,91 @@ async def test_collect_inserts_milestone_and_updates_state(db):
     assert rows[0]["ai_take"] == "take"
     assert await get_collector_state(db, "milestone_last_arxiv_check") is not None
     assert await get_collector_state(db, "milestone_last_hf_check") is not None
+
+
+# ── GitHub releases source ────────────────────────────────────────────────────
+
+from datetime import timedelta
+
+from collectors.milestone import MilestoneCollector, _RateLimited, parse_release_entries
+
+
+def _release(tag="v1.2.0", name="Big release", days_ago=1, draft=False,
+             prerelease=False):
+    published = (datetime.now(timezone.utc) - timedelta(days=days_ago))
+    return {
+        "tag_name": tag, "name": name, "draft": draft,
+        "prerelease": prerelease,
+        "published_at": published.isoformat().replace("+00:00", "Z"),
+        "html_url": f"https://github.com/o/r/releases/tag/{tag}",
+    }
+
+
+def test_parse_release_entries_filters_drafts_and_prereleases():
+    payload = [_release(), _release(tag="v2.0-rc", prerelease=True),
+               _release(tag="wip", draft=True)]
+    entries = parse_release_entries(payload, since_iso=None)
+    assert len(entries) == 1
+    assert entries[0]["title"] == "v1.2.0 — Big release"
+    assert entries[0]["url"].endswith("/v1.2.0")
+
+
+def test_parse_release_entries_respects_since():
+    old_iso = (datetime.now(timezone.utc) - timedelta(hours=12)).isoformat()
+    payload = [_release(days_ago=1), _release(tag="v9", days_ago=0)]
+    entries = parse_release_entries(payload, since_iso=old_iso)
+    assert [e["title"].split(" — ")[0] for e in entries] == ["v9"]
+
+
+def test_parse_release_entries_first_run_caps_at_seven_days():
+    payload = [_release(days_ago=30), _release(tag="v9", days_ago=2)]
+    entries = parse_release_entries(payload, since_iso=None)
+    assert len(entries) == 1                      # 30-day-old release not flooded in
+
+
+def test_parse_release_entries_skips_malformed():
+    payload = [{"tag_name": "v1"}, _release()]    # missing published_at/html_url
+    assert len(parse_release_entries(payload, since_iso=None)) == 1
+
+
+def test_parse_release_entries_name_falls_back_to_tag():
+    payload = [_release(name=None)]
+    entries = parse_release_entries(payload, since_iso=None)
+    assert entries[0]["title"] == "v1.2.0 — v1.2.0"
+
+
+@pytest.mark.asyncio
+async def test_collect_inserts_github_release(db):
+    registry = {3: {"name": "Templar", "github_url": "https://github.com/org/repo"}}
+    entry = {"title": "v1.0 — Launch",
+             "url": "https://github.com/o/r/releases/tag/v1.0",
+             "published_at": datetime.now(timezone.utc)}
+    with patch.object(MilestoneCollector, "_query_arxiv", AsyncMock(return_value=[])), \
+            patch.object(MilestoneCollector, "_query_huggingface", AsyncMock(return_value=[])), \
+            patch.object(MilestoneCollector, "_query_github_releases",
+                         AsyncMock(return_value=[entry])), \
+            patch("collectors.milestone.interpret_milestone",
+                  AsyncMock(return_value=(None, None))), \
+            patch("collectors.milestone.asyncio.sleep", AsyncMock()):
+        new = await MilestoneCollector.collect(db, registry)
+    assert new == 1
+    cur = await db.execute(
+        "SELECT milestone_type, title FROM subnet_milestones WHERE milestone_type='github_release'")
+    row = await cur.fetchone()
+    assert row is not None and row["title"] == "v1.0 — Launch"
+    assert await get_collector_state(db, "milestone_last_github_check") is not None
+
+
+@pytest.mark.asyncio
+async def test_collect_rate_limit_aborts_releases_source(db):
+    registry = {
+        3: {"name": "A", "github_url": "https://github.com/org/repo1"},
+        4: {"name": "B", "github_url": "https://github.com/org/repo2"},
+    }
+    calls = AsyncMock(side_effect=_RateLimited("x"))
+    with patch.object(MilestoneCollector, "_query_arxiv", AsyncMock(return_value=[])), \
+            patch.object(MilestoneCollector, "_query_huggingface", AsyncMock(return_value=[])), \
+            patch.object(MilestoneCollector, "_query_github_releases", calls), \
+            patch("collectors.milestone.asyncio.sleep", AsyncMock()):
+        await MilestoneCollector.collect(db, registry)
+    assert calls.await_count == 1        # aborted after the first 403

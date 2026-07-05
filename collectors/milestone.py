@@ -3,18 +3,25 @@ import json
 import logging
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import aiohttp
 import aiosqlite
 
 import config
+from collectors.github import parse_github_url
 from utils import aiohttp_session
 
 logger = logging.getLogger(__name__)
 
 ARXIV_API = "http://export.arxiv.org/api/query"
+GITHUB_RELEASES_API = "https://api.github.com/repos/{owner}/{repo}/releases"
+_FIRST_RUN_LOOKBACK_DAYS = 7
+
+
+class _RateLimited(Exception):
+    """GitHub returned 403: abort the releases source for this run."""
 _ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
 _VERSION_RE = re.compile(r"v\d+$")
 
@@ -59,6 +66,43 @@ def parse_arxiv_feed(xml_text: str) -> list[dict]:
 
         entries.append({
             "title": title,
+            "url": url,
+            "published_at": published_at,
+        })
+    return entries
+
+
+def parse_release_entries(payload: list[dict],
+                          since_iso: Optional[str]) -> list[dict]:
+    """Filter raw GitHub /releases JSON into milestone entries.
+
+    Drafts and prereleases are noise. On the first run (no since state) only
+    the last 7 days are ingested — never a 109-repo backlog flood.
+    """
+    if since_iso is None:
+        since_iso = (datetime.now(timezone.utc)
+                     - timedelta(days=_FIRST_RUN_LOOKBACK_DAYS)).isoformat()
+
+    entries: list[dict] = []
+    for release in payload:
+        if not isinstance(release, dict):
+            continue
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        tag = release.get("tag_name")
+        url = release.get("html_url")
+        published_raw = release.get("published_at")
+        if not tag or not url or not published_raw:
+            continue
+        try:
+            published_at = datetime.fromisoformat(published_raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if published_at.isoformat() <= since_iso:
+            continue
+        name = release.get("name") or tag
+        entries.append({
+            "title": f"{tag} — {name}",
             "url": url,
             "published_at": published_at,
         })
@@ -167,11 +211,43 @@ class MilestoneCollector:
         return results
 
     @staticmethod
+    async def _query_github_releases(owner: str, repo: str,
+                                     since_iso: Optional[str]) -> list[dict]:
+        headers = {"Accept": "application/vnd.github+json"}
+        if config.GITHUB_TOKEN:
+            headers["Authorization"] = f"token {config.GITHUB_TOKEN}"
+        url = GITHUB_RELEASES_API.format(owner=owner, repo=repo)
+        try:
+            async with aiohttp_session() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    params={"per_page": "5"},
+                    timeout=aiohttp.ClientTimeout(total=20),
+                ) as resp:
+                    if resp.status == 403:
+                        raise _RateLimited(url)
+                    if resp.status != 200:
+                        return []
+                    payload = await resp.json()
+        except _RateLimited:
+            raise
+        except Exception as exc:
+            logger.warning("[COLLECTOR] milestone: releases failed repo=%s/%s error=%s",
+                           owner, repo, exc)
+            return []
+        if not isinstance(payload, list):
+            return []
+        return parse_release_entries(payload, since_iso)
+
+    @staticmethod
     async def collect(db: aiosqlite.Connection, registry: dict) -> int:
         from db.database import get_collector_state, insert_milestone, set_collector_state
 
         arxiv_since = await get_collector_state(db, "milestone_last_arxiv_check")
         hf_since = await get_collector_state(db, "milestone_last_hf_check")
+        github_since = await get_collector_state(db, "milestone_last_github_check")
+        releases_enabled = True
         now_iso = datetime.now(timezone.utc).isoformat()
 
         new_count = 0
@@ -218,10 +294,38 @@ class MilestoneCollector:
                 if inserted:
                     new_count += 1
 
+            repo_parts = parse_github_url(
+                row.get("github_url") if isinstance(row, dict) else row["github_url"])
+            if releases_enabled and repo_parts:
+                try:
+                    release_entries = await MilestoneCollector._query_github_releases(
+                        repo_parts[0], repo_parts[1], github_since)
+                except _RateLimited:
+                    logger.warning("[COLLECTOR] milestone: github rate-limited — "
+                                   "skipping releases for the rest of this run")
+                    releases_enabled = False
+                    release_entries = []
+                for entry in release_entries:
+                    summary, take = await interpret_milestone(
+                        name, netuid, "github_release", entry["title"], entry["url"])
+                    inserted = await insert_milestone(
+                        db,
+                        netuid,
+                        "github_release",
+                        entry["title"],
+                        entry["url"],
+                        entry["published_at"],
+                        ai_summary=summary,
+                        ai_take=take,
+                    )
+                    if inserted:
+                        new_count += 1
+
             await asyncio.sleep(1.0)
 
         await set_collector_state(db, "milestone_last_arxiv_check", now_iso)
         await set_collector_state(db, "milestone_last_hf_check", now_iso)
+        await set_collector_state(db, "milestone_last_github_check", now_iso)
         logger.info(
             "[COLLECTOR] name=milestone new=%d subnets_checked=%d",
             new_count,
