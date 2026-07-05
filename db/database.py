@@ -951,6 +951,29 @@ async def update_registry_category(db: aiosqlite.Connection,
     await db.commit()
 
 
+async def get_scoring_alert_context(db: aiosqlite.Connection,
+                                    alert_types: list[str],
+                                    hours: int) -> dict[int, set[str]]:
+    """Recent alert rows UNION currently-active chronic conditions.
+
+    Chronic alerts fire once on entry (state machine), so the alert-row window
+    alone silently drops e.g. emission_near_zero from risk scoring after
+    `hours` — while the subnet is still in the bad state. Active conditions
+    share their names with alert types, so they merge directly. Sentinel rows
+    (netuid < 0, collector health / market regime) are excluded.
+    """
+    result = await get_recent_alert_types_per_netuid(db, alert_types, hours)
+    wanted = set(alert_types)
+    cursor = await db.execute(
+        "SELECT netuid, condition FROM condition_states "
+        "WHERE status='active' AND netuid >= 0"
+    )
+    for row in await cursor.fetchall():
+        if row["condition"] in wanted:
+            result.setdefault(row["netuid"], set()).add(row["condition"])
+    return result
+
+
 async def get_recent_alert_types_per_netuid(db: aiosqlite.Connection,
                                             alert_types: list[str],
                                             hours: int) -> dict[int, set[str]]:

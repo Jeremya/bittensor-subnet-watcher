@@ -21,7 +21,7 @@ from db.database import init_db, insert_snapshot, insert_alert, get_latest_snaps
     get_unsent_alerts, mark_alerts_sent, downsample_old_snapshots, get_registry, \
     get_snapshots_for_netuid, \
     upsert_portfolio_position, delete_gone_positions, update_registry_category, \
-    get_recent_alert_types_per_netuid, get_active_analyst_coverage_netuids, \
+    get_scoring_alert_context, get_active_analyst_coverage_netuids, \
     get_recent_milestone_netuids, get_emergence_age_context
 from collectors.chain import ChainCollector, init_subtensor, close_subtensor
 from collectors.github import GitHubCollector
@@ -160,7 +160,7 @@ async def poll_cycle() -> None:
             )
             for r in rows
         ]
-    alert_types_for_scoring = await get_recent_alert_types_per_netuid(
+    alert_types_for_scoring = await get_scoring_alert_context(
         _db,
         SCORING_ALERT_TYPES,
         config.ANALYST_COVERAGE_DECAY_HOURS,

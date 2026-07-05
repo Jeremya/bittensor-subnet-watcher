@@ -211,3 +211,30 @@ async def test_get_alerts_for_netuid_filters_correctly(db):
     rows = await get_alerts_for_netuid(db, 1, limit=10)
     assert len(rows) == 2
     assert all(r["netuid"] == 1 for r in rows)
+
+
+async def test_scoring_alert_context_includes_active_conditions(db):
+    """Chronic conditions must feed risk scoring while ACTIVE, not only while
+    their entry alert row is <72h old (state-machine regression: SN116 ranked
+    #1 with an active emission_near_zero condition and risk_penalty 0)."""
+    from db.database import get_scoring_alert_context
+    from engine.signals import SCORING_ALERT_TYPES
+
+    # Active condition, but its entry alert fired 5 days ago (outside window)
+    old = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+    await db.execute(
+        "INSERT INTO condition_states (netuid, condition, status, first_breach_at,"
+        " breach_streak, clear_streak, entered_at, updated_at)"
+        " VALUES (7, 'emission_near_zero', 'active', ?, 2, 0, ?, ?)",
+        (old, old, old))
+    # Sentinel rows must never leak into subnet scoring
+    await db.execute(
+        "INSERT INTO condition_states (netuid, condition, status, first_breach_at,"
+        " breach_streak, clear_streak, entered_at, updated_at)"
+        " VALUES (-1, 'collector_stale_github', 'active', ?, 2, 0, ?, ?)",
+        (old, old, old))
+    await db.commit()
+
+    ctx = await get_scoring_alert_context(db, SCORING_ALERT_TYPES, hours=72)
+    assert "emission_near_zero" in ctx.get(7, set())
+    assert -1 not in ctx

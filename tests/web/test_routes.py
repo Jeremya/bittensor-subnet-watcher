@@ -155,7 +155,7 @@ async def test_subnet_detail_recent_alert_query_includes_flow_aliases_and_legacy
     await upsert_registry_entry(db, 5, "Templar", None, None, None)
     recent_alerts = AsyncMock(return_value={})
 
-    with patch("web.routes.get_recent_alert_types_per_netuid", new=recent_alerts):
+    with patch("web.routes.get_scoring_alert_context", new=recent_alerts):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.get("/subnet/5")
 

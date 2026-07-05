@@ -21,7 +21,7 @@ from db.database import (
     get_subnet_detail, get_alerts_for_netuid, get_snapshots_for_netuid,
     get_owner_change_counts, get_reg_cost_7d_ago,
     get_portfolio_positions, get_staked_netuids,
-    get_recent_alert_types_per_netuid,
+    get_scoring_alert_context,
     get_recent_milestone_netuids,
     remove_analyst_handle,
     update_registry_category,
@@ -145,7 +145,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         milestones = await get_milestones_for_netuid(db, netuid, limit=10)
         all_snaps = await get_latest_snapshots_with_registry(db)
         total = len(all_snaps)
-        alert_types_by_netuid = await get_recent_alert_types_per_netuid(
+        alert_types_by_netuid = await get_scoring_alert_context(
             db,
             SCORING_ALERT_TYPES,
             config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS,
@@ -428,7 +428,7 @@ def create_app(db: aiosqlite.Connection) -> FastAPI:
         )
         latest_snaps = [dict(row) for row in await get_latest_snapshots_with_registry(db)]
         snapshots_by_netuid = {snap["netuid"]: snap for snap in latest_snaps}
-        alert_types = await get_recent_alert_types_per_netuid(
+        alert_types = await get_scoring_alert_context(
             db,
             SCORING_ALERT_TYPES,
             config.PORTFOLIO_RECOMMENDATION_WINDOW_HOURS,

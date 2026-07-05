@@ -192,7 +192,7 @@ async def test_poll_cycle_scores_emergence_with_richer_history(monkeypatch):
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[hist_row])), \
-            patch.object(main, "get_recent_alert_types_per_netuid", recent_alert_types_mock), \
+            patch.object(main, "get_scoring_alert_context", recent_alert_types_mock), \
             patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_emergence_age_context", AsyncMock(return_value={42: now})), \
@@ -243,7 +243,7 @@ async def test_poll_cycle_passes_historical_alpha_price_to_scoring(monkeypatch):
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[hist_row])), \
-            patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
+            patch.object(main, "get_scoring_alert_context", AsyncMock(return_value={})), \
             patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_emergence_age_context", AsyncMock(return_value={})), \
@@ -283,7 +283,7 @@ async def test_poll_cycle_scores_emergence_before_swing_scoring(monkeypatch):
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
-            patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
+            patch.object(main, "get_scoring_alert_context", AsyncMock(return_value={})), \
             patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_emergence_age_context", AsyncMock(return_value={42: now})), \
@@ -333,7 +333,7 @@ async def test_poll_cycle_preserves_previous_price_for_alert_context(monkeypatch
             patch.object(main, "get_registry", AsyncMock(return_value={})), \
             patch.object(main, "get_latest_snapshots", AsyncMock(return_value=[previous_row])), \
             patch.object(main, "get_snapshots_for_netuid", AsyncMock(return_value=[])), \
-            patch.object(main, "get_recent_alert_types_per_netuid", AsyncMock(return_value={})), \
+            patch.object(main, "get_scoring_alert_context", AsyncMock(return_value={})), \
             patch.object(main, "get_active_analyst_coverage_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_recent_milestone_netuids", AsyncMock(return_value=set())), \
             patch.object(main, "get_emergence_age_context", AsyncMock(return_value={})), \

@@ -53,7 +53,7 @@ def client_with_portfolio():
                  "momentum_score": 72.0,
              },
          ])), \
-         patch("web.routes.get_recent_alert_types_per_netuid", new=AsyncMock(return_value={})), \
+         patch("web.routes.get_scoring_alert_context", new=AsyncMock(return_value={})), \
          patch("web.routes.get_active_analyst_coverage_netuids", new=AsyncMock(return_value={14})), \
          patch("web.routes.get_recent_milestone_netuids", new=AsyncMock(return_value={56})), \
          patch("web.routes.build_portfolio_recommendations", return_value={
@@ -121,7 +121,7 @@ def test_portfolio_empty_state():
     db = AsyncMock()
     with patch("web.routes.get_portfolio_positions", new=AsyncMock(return_value=[])), \
          patch("web.routes.get_latest_snapshots_with_registry", new=AsyncMock(return_value=[])), \
-         patch("web.routes.get_recent_alert_types_per_netuid", new=AsyncMock(return_value={})), \
+         patch("web.routes.get_scoring_alert_context", new=AsyncMock(return_value={})), \
          patch("web.routes.get_active_analyst_coverage_netuids", new=AsyncMock(return_value=set())), \
          patch("web.routes.get_recent_milestone_netuids", new=AsyncMock(return_value=set())), \
          patch("web.routes.get_staked_netuids", new=AsyncMock(return_value=set())), \
@@ -193,7 +193,7 @@ def test_portfolio_recent_alert_query_includes_flow_aliases_and_legacy_types():
     recent_alerts = AsyncMock(return_value={})
     with patch("web.routes.get_portfolio_positions", new=AsyncMock(return_value=[])), \
          patch("web.routes.get_latest_snapshots_with_registry", new=AsyncMock(return_value=[])), \
-         patch("web.routes.get_recent_alert_types_per_netuid", new=recent_alerts), \
+         patch("web.routes.get_scoring_alert_context", new=recent_alerts), \
          patch("web.routes.get_active_analyst_coverage_netuids", new=AsyncMock(return_value=set())), \
          patch("web.routes.get_recent_milestone_netuids", new=AsyncMock(return_value=set())), \
          patch("web.routes.get_staked_netuids", new=AsyncMock(return_value=set())), \
